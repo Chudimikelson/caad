@@ -1,24 +1,17 @@
 import React, { useContext } from "react";
 import { DataContext } from "../DataContext";
-import {
-  Box,
-  Grid,
-  Paper,
-  Typography,
-} from "@mui/material";
+import { Box, Grid, Paper, Typography } from "@mui/material";
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   CartesianGrid,
   Legend,
 } from "recharts";
-
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import PeopleIcon from "@mui/icons-material/People";
@@ -26,182 +19,244 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 
-import TopBar from "../components/TopBar";
+const formatNaira = (value) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+
+const formatMonthLabel = (value) =>
+  new Date(`${value}-01`).toLocaleDateString("en-GB", {
+    month: "short",
+    year: "numeric",
+  });
+
+const formatMillions = (value) => {
+  const numericValue = Number(value || 0);
+  if (numericValue === 0) return "0M";
+  return `${(numericValue / 1000000).toFixed(numericValue >= 10000000 ? 0 : 1)}M`;
+};
 
 const Dashboard = () => {
   const { loans, repayments } = useContext(DataContext);
 
-  // Summary calculations
-const totalDisbursed = loans.reduce((sum, l) => sum + l.amount, 0);
-const totalClients = new Set(loans.map(l => l.customerName)).size;
+  const totalDisbursed = loans.reduce((sum, loan) => sum + Number(loan.amount || 0), 0);
+  const totalClients = new Set(loans.map((loan) => loan.customerName)).size;
 
-// Running Loan = total ₦ amount of loans not fully repaid
-const runningLoanAmount = loans.reduce((sum, l) => {
-  const loanRepayments = repayments.filter(r => r.loanId === l.id);
-  const paidCountForLoan = loanRepayments.filter(r => r.status === "✅").length;
-  return paidCountForLoan < l.tenor ? sum + l.amount : sum;
-}, 0);
+  const runningLoanAmount = loans.reduce((sum, loan) => {
+    const loanRepayments = repayments.filter((repayment) => repayment.loanId === loan.id);
+    const paidCountForLoan = loanRepayments.filter((repayment) => repayment.status === "✅").length;
+    return paidCountForLoan < Number(loan.tenor || 0) ? sum + Number(loan.amount || 0) : sum;
+  }, 0);
 
-// Expected Repayments = total ₦ amount scheduled
-const expectedRepaymentsAmount = repayments.reduce((sum, r) => sum + r.amount, 0);
+  const expectedRepaymentsAmount = repayments.reduce(
+    (sum, repayment) => sum + Number(repayment.amount || 0),
+    0
+  );
+  const paidAmount = repayments
+    .filter((repayment) => repayment.status === "✅")
+    .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
+  const missedAmount = repayments
+    .filter((repayment) => repayment.status === "❌")
+    .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
 
-// Paid = total ₦ amount successfully repaid
-const paidAmount = repayments
-  .filter(r => r.status === "✅")
-  .reduce((sum, r) => sum + r.amount, 0);
+  const repaymentData = [
+    { name: "Paid", value: paidAmount, color: "#16a34a" },
+    { name: "Missed", value: missedAmount, color: "#dc2626" },
+  ];
 
-// Missed = total ₦ amount failed
-const missedAmount = repayments
-  .filter(r => r.status === "❌")
-  .reduce((sum, r) => sum + r.amount, 0);
+  const loanData = Object.values(
+    loans.reduce((accumulator, loan) => {
+      if (!loan.startDate) return accumulator;
 
-  // Chart data
- const repaymentData = [
-  { name: "Paid", value: paidAmount },
-  { name: "Missed", value: missedAmount },
-];
+      const monthKey = loan.startDate.slice(0, 7);
+      if (!accumulator[monthKey]) {
+        accumulator[monthKey] = {
+          month: monthKey,
+          amount: 0,
+          loansCount: 0,
+        };
+      }
 
-  const loanData = loans.map((loan) => ({
-    date: loan.startDate,
-    amount: loan.amount,
-  }));
+      accumulator[monthKey].amount += Number(loan.amount || 0);
+      accumulator[monthKey].loansCount += 1;
+      return accumulator;
+    }, {})
+  ).sort((a, b) => a.month.localeCompare(b.month));
+
+  const stats = [
+    {
+      label: "Total Disbursed",
+      value: formatNaira(totalDisbursed),
+      icon: <AttachMoneyIcon />,
+      color: "#1e3a8a",
+    },
+    { label: "Total Clients", value: totalClients, icon: <PeopleIcon />, color: "#0f766e" },
+    {
+      label: "Running Loan",
+      value: formatNaira(runningLoanAmount),
+      icon: <TrendingUpIcon />,
+      color: "#7c2d12",
+    },
+    {
+      label: "Expected Repayments",
+      value: formatNaira(expectedRepaymentsAmount),
+      icon: <AssessmentIcon />,
+      color: "#7e22ce",
+    },
+    { label: "Paid", value: formatNaira(paidAmount), icon: <CheckCircleIcon />, color: "#166534" },
+    { label: "Missed", value: formatNaira(missedAmount), icon: <CancelIcon />, color: "#b91c1c" },
+  ];
 
   return (
-    <Box>
-      <TopBar />
-      <Box p={3}>
-        {/* Summary Cards */}
-       <Grid container spacing={3}>
-  <Grid item xs={12} sm={6} md={4}>
-    <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1, height: 85, display: "flex", width:285, alignItems: "center", gap: 2 }}>
-      <Box sx={{ width: 50, height: 50, borderRadius: 2, backgroundColor: "#1976d2", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <AttachMoneyIcon />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">Total Disbursed</Typography>
-        <Typography variant="h5" fontWeight="bold" noWrap>
-          ₦{totalDisbursed.toLocaleString()}
-        </Typography>
-      </Box>
-    </Paper>
-  </Grid>
+    <Box sx={{ p: { xs: 1, md: 3 } }}>
+      <Typography variant="h4" sx={{ mb: 2 }}>
+        Dashboard
+      </Typography>
 
-  <Grid item xs={12} sm={6} md={4}>
-    <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1, height: 85, display: "flex", width:285, alignItems: "center", gap: 2 }}>
-      <Box sx={{ width: 50, height: 50, borderRadius: 2, backgroundColor: "#1976d2", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <PeopleIcon />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">Total Clients</Typography>
-        <Typography variant="h5" fontWeight="bold" noWrap>{totalClients}</Typography>
-      </Box>
-    </Paper>
-  </Grid>
+      <Grid container spacing={2}>
+        {stats.map((item) => (
+          <Grid key={item.label} size={{ xs: 12, sm: 6, xl: 4 }}>
+            <Paper
+              sx={{
+                p: 2.25,
+                borderRadius: 3,
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+                minHeight: 112,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 2,
+                  backgroundColor: item.color,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                }}
+              >
+                {item.icon}
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ color: "#64748b", mb: 0.2 }}>
+                  {item.label}
+                </Typography>
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 700, color: "#0f172a" }}
+                  noWrap
+                  title={String(item.value)}
+                >
+                  {item.value}
+                </Typography>
+              </Box>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
 
-  <Grid item xs={12} sm={6} md={4}>
-    <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1, height: 85, display: "flex", width:285, alignItems: "center", gap: 2 }}>
-      <Box sx={{ width: 50, height: 50, borderRadius: 2, backgroundColor: "#1976d2", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <TrendingUpIcon />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">Running Loan</Typography>
-        <Typography variant="h5" fontWeight="bold" noWrap>
-          ₦{runningLoanAmount.toLocaleString()}
-        </Typography>
-      </Box>
-    </Paper>
-  </Grid>
-
-  <Grid item xs={12} sm={6} md={4}>
-    <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1, height: 85, display: "flex", width:285, alignItems: "center", gap: 2 }}>
-      <Box sx={{ width: 50, height: 50, borderRadius: 2, backgroundColor: "#1976d2", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <AssessmentIcon />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">Expected Repayments</Typography>
-        <Typography variant="h5" fontWeight="bold" noWrap>
-          ₦{expectedRepaymentsAmount.toLocaleString()}
-        </Typography>
-      </Box>
-    </Paper>
-  </Grid>
-
-  <Grid item xs={12} sm={6} md={4}>
-    <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1, height: 85, display: "flex", width:285, alignItems: "center", gap: 2 }}>
-      <Box sx={{ width: 50, height: 50, borderRadius: 2, backgroundColor: "#1976d2", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <CheckCircleIcon />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">Paid</Typography>
-        <Typography variant="h5" fontWeight="bold" noWrap>
-          ₦{paidAmount.toLocaleString()}
-        </Typography>
-      </Box>
-    </Paper>
-  </Grid>
-
-  <Grid item xs={12} sm={6} md={4}>
-    <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1, height: 85, display: "flex", width:285, alignItems: "center", gap: 2 }}>
-      <Box sx={{ width: 50, height: 50, borderRadius: 2, backgroundColor: "#1976d2", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-        <CancelIcon />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">Missed</Typography>
-        <Typography variant="h5" fontWeight="bold" noWrap>
-          ₦{missedAmount.toLocaleString()}
-        </Typography>
-      </Box>
-    </Paper>
-  </Grid>
-</Grid>
-
-        {/* Repayment Status Chart */}
-        <Box mt={4}>
-          <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1 }}>
+      <Grid container spacing={2} sx={{ mt: 0.5 }}>
+        <Grid size={{ xs: 12, xl: 7 }}>
+          <Paper
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+            }}
+          >
             <Typography variant="h6" gutterBottom>
-              Repayment Status Chart
+              Monthly Loan Disbursement Performance
+            </Typography>
+            {loanData.length === 0 ? (
+              <Box
+                sx={{
+                  height: 300,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#64748b",
+                }}
+              >
+                <Typography variant="body2">No disbursement data yet.</Typography>
+              </Box>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={loanData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis
+                    dataKey="month"
+                    tickFormatter={formatMonthLabel}
+                  />
+                  <YAxis yAxisId="amount" tickFormatter={formatMillions} />
+                  <YAxis yAxisId="count" orientation="right" allowDecimals={false} />
+                  <Tooltip
+                    labelFormatter={(value) => formatMonthLabel(value)}
+                    formatter={(value, name) => {
+                      if (name === "Disbursed") {
+                        return [formatNaira(value), name];
+                      }
+
+                      return [value, name];
+                    }}
+                  />
+                  <Legend />
+                  <Bar
+                    yAxisId="amount"
+                    dataKey="amount"
+                    fill="#1e3a8a"
+                    radius={[8, 8, 0, 0]}
+                    name="Disbursed"
+                  />
+                  <Bar
+                    yAxisId="count"
+                    dataKey="loansCount"
+                    fill="#0f766e"
+                    radius={[8, 8, 0, 0]}
+                    name="Loans Count"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </Paper>
+        </Grid>
+
+        <Grid size={{ xs: 12, xl: 5 }}>
+          <Paper
+            sx={{
+              p: 2.5,
+              borderRadius: 3,
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
+              height: "100%",
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Repayment Status
             </Typography>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={repaymentData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar
-                  dataKey="value"
-                  radius={[10, 10, 0, 0]}
-                  fill={({ name }) => (name === "Paid" ? "#4caf50" : "#f44336")}
-                />
+                <YAxis tickFormatter={formatMillions} />
+                <Tooltip formatter={(value) => formatNaira(value)} />
+                <Bar dataKey="value" radius={[10, 10, 0, 0]}>
+                  {repaymentData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </Paper>
-        </Box>
-
-        {/* Loan Disbursement Chart */}
-        <Box mt={4}>
-          <Paper sx={{ p: 3, borderRadius: 1, boxShadow: 1 }}>
-            <Typography variant="h6" gutterBottom>
-              Loan Disbursements Over Time
-            </Typography>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={loanData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="amount"
-                  stroke="#82ca9d"
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: "#82ca9d" }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Box>
-      </Box>
+        </Grid>
+      </Grid>
     </Box>
   );
 };

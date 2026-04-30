@@ -5,13 +5,62 @@ import * as api from "./api";
 export const DataContext = createContext();
 
 export const DataProvider = ({ children }) => {
+  // ========== Theme State ==========
+  const [themeMode, setThemeMode] = useState(localStorage.getItem("themeMode") || "light");
+
+  // ========== Authentication State ==========
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // ========== Loan & Repayment State ==========
   const [loans, setLoans] = useState([]);
   const [repayments, setRepayments] = useState([]);
   const [serverAvailable, setServerAvailable] = useState(true);
 
-  // Load initial data: try server, fallback to localStorage
+  // ========== Account Officers State ==========
+  const [officers, setOfficers] = useState([]);
+  const [activeOfficers, setActiveOfficers] = useState([]);
+
+  // ========== Auto-login on app initialization ==========
   useEffect(() => {
     let mounted = true;
+
+    const autoLogin = async () => {
+      const token = localStorage.getItem("jwt_token");
+      const savedUser = localStorage.getItem("authUser");
+
+      if (token && savedUser) {
+        try {
+          // Verify token is still valid
+          await api.getCurrentUser();
+          if (!mounted) return;
+          let userData = JSON.parse(savedUser);
+          // Patch: assign default role if missing
+          if (!userData.role) userData.role = "Relationship Manager";
+          setUser(userData);
+          setIsAuthenticated(true);
+        } catch (err) {
+          // Token invalid or expired
+          localStorage.removeItem("jwt_token");
+          localStorage.removeItem("authUser");
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      }
+      setAuthLoading(false);
+    };
+
+    autoLogin();
+    return () => (mounted = false);
+  }, []);
+
+  // ========== Load data only when authenticated ==========
+  useEffect(() => {
+    if (!isAuthenticated || authLoading) return;
+
+    let mounted = true;
+
     const load = async () => {
       try {
         const [serverLoans, serverReps] = await Promise.all([
@@ -25,6 +74,7 @@ export const DataProvider = ({ children }) => {
         localStorage.setItem("loans", JSON.stringify(serverLoans || []));
         localStorage.setItem("repayments", JSON.stringify(serverReps || []));
       } catch (err) {
+        if (!mounted) return;
         setServerAvailable(false);
         const rawLoans = localStorage.getItem("loans");
         const rawReps = localStorage.getItem("repayments");
@@ -32,11 +82,17 @@ export const DataProvider = ({ children }) => {
         setRepayments(rawReps ? JSON.parse(rawReps) : []);
       }
     };
+
     load();
     return () => (mounted = false);
-  }, []);
+  }, [isAuthenticated, authLoading]);
 
   // Keep localStorage in sync as a cache
+  useEffect(() => {
+    localStorage.setItem("themeMode", themeMode);
+    document.documentElement.setAttribute("data-theme", themeMode);
+  }, [themeMode]);
+
   useEffect(() => {
     localStorage.setItem("loans", JSON.stringify(loans));
   }, [loans]);
@@ -44,6 +100,76 @@ export const DataProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem("repayments", JSON.stringify(repayments));
   }, [repayments]);
+
+  // ========== Authentication Functions ==========
+
+  const login = useCallback(async (credentials) => {
+    setAuthLoading(true);
+    try {
+      const response = await api.login(credentials.email, credentials.password);
+      const { token, user: userData } = response;
+
+      // Store token and user data
+      localStorage.setItem("jwt_token", token);
+      localStorage.setItem("authUser", JSON.stringify(userData));
+
+      setUser(userData);
+      setIsAuthenticated(true);
+      setAuthLoading(false);
+
+      return { success: true, user: userData };
+    } catch (err) {
+      setAuthLoading(false);
+      const errMsg = err.message || "Login failed";
+      return { success: false, error: errMsg };
+    }
+  }, []);
+
+  const register = useCallback(async (credentials) => {
+    setAuthLoading(true);
+    try {
+      const response = await api.register({ name: credentials.name, email: credentials.email, password: credentials.password });
+      const { token, user: userData } = response;
+
+      localStorage.setItem("jwt_token", token);
+      localStorage.setItem("authUser", JSON.stringify(userData));
+
+      setUser(userData);
+      setIsAuthenticated(true);
+      setAuthLoading(false);
+
+      return { success: true, user: userData };
+    } catch (err) {
+      setAuthLoading(false);
+      const errMsg = err.message || "Registration failed";
+      return { success: false, error: errMsg };
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      // Attempt to notify server
+      await api.logout();
+    } catch (err) {
+      // Logout locally even if server call fails
+      console.warn("Server logout failed:", err);
+    }
+
+    // Clear local state and storage
+    localStorage.removeItem("jwt_token");
+    localStorage.removeItem("authUser");
+    localStorage.removeItem("loans");
+    localStorage.removeItem("repayments");
+
+    setUser(null);
+    setIsAuthenticated(false);
+    setLoans([]);
+    setRepayments([]);
+  }, []);
+
+  const toggleThemeMode = useCallback(() => {
+    setThemeMode((current) => (current === "light" ? "dark" : "light"));
+  }, []);
 
   /* -------------------- Loan helpers -------------------- */
 
@@ -58,7 +184,7 @@ export const DataProvider = ({ children }) => {
 
       try {
         const created = await api.createLoan(loan);
-        setLoans((prev) => prev.map((l) => (l.id === tempId ? created : l)));
+        setLoans((prev) => prev.map((l) => l.id === tempId ? created : l));
         return created;
       } catch (err) {
         setLoans((prev) => prev.filter((l) => l.id !== tempId));
@@ -180,20 +306,20 @@ export const DataProvider = ({ children }) => {
 
   const syncDeleteRepayment = useCallback(
     async (id) => {
-      const prevReps = repayments;
-      setRepayments((prev) => prev.filter((r) => r.id !== id));
+    const prevReps = repayments;
+    setRepayments((prev) => prev.filter((r) => r.id !== id));
 
-      if (!serverAvailable) return;
+    if (!serverAvailable) return;
 
-      try {
-        await api.deleteRepayment(id);
-      } catch (err) {
-        setRepayments(prevReps);
-        throw err;
-      }
-    },
-    [repayments, serverAvailable]
-  );
+    try {
+      await api.deleteRepayment(id);
+    } catch (err) {
+      setRepayments(prevReps);
+      throw err;
+    }
+  },
+  [repayments, serverAvailable]
+);
 
   /* -------------------- Replace unpaid repayments helper -------------------- */
 
@@ -245,9 +371,83 @@ export const DataProvider = ({ children }) => {
     [serverAvailable]
   );
 
+  /* -------------------- Account Officer helpers -------------------- */
+
+  const syncLoadAllOfficers = useCallback(async () => {
+    try {
+      const allOfficers = await api.fetchAllOfficers();
+      setOfficers(Array.isArray(allOfficers) ? allOfficers : []);
+      return allOfficers;
+    } catch (err) {
+      console.error("Failed to load officers:", err);
+      setOfficers([]);
+      throw err;
+    }
+  }, []);
+
+  const syncLoadActiveOfficers = useCallback(async () => {
+    try {
+      const active = await api.fetchActiveOfficers();
+      setActiveOfficers(Array.isArray(active) ? active : []);
+      return active;
+    } catch (err) {
+      console.error("Failed to load active officers:", err);
+      setActiveOfficers([]);
+      throw err;
+    }
+  }, []);
+
+  const syncCreateOfficer = useCallback(
+    async (name, branch) => {
+      try {
+        const newOfficer = await api.createOfficer(name, branch);
+        setOfficers((prev) => [...prev, newOfficer]);
+        // Reload active officers list
+        await syncLoadActiveOfficers();
+        return newOfficer;
+      } catch (err) {
+        console.error("Failed to create officer:", err);
+        throw err;
+      }
+    },
+    [syncLoadActiveOfficers]
+  );
+
+  const syncToggleOfficerStatus = useCallback(
+    async (id) => {
+      const prev = officers.find((o) => o.id === id);
+      setOfficers((prevArr) => prevArr.map((o) => (o.id === id ? { ...o, isActive: !o.isActive } : o)));
+
+      try {
+        const updated = await api.toggleOfficerStatus(id);
+        setOfficers((prevArr) => prevArr.map((o) => (o.id === id ? updated : o)));
+        // Reload active officers list
+        await syncLoadActiveOfficers();
+        return updated;
+      } catch (err) {
+        // revert
+        setOfficers((prevArr) => prevArr.map((o) => (o.id === id ? prev : o)));
+        throw err;
+      }
+    },
+    [officers, syncLoadActiveOfficers]
+  );
+
   return (
     <DataContext.Provider
       value={{
+        // Theme
+        themeMode,
+        toggleThemeMode,
+
+        // Authentication
+        user,
+        isAuthenticated,
+        authLoading,
+        login,
+        logout,
+
+        // Loans & Repayments
         loans,
         setLoans,
         repayments,
@@ -256,10 +456,19 @@ export const DataProvider = ({ children }) => {
         syncCreateLoan,
         syncUpdateLoan,
         syncDeleteLoan,
+        register,
         syncCreateRepayment,
         syncUpdateRepayment,
         syncDeleteRepayment,
         syncReplaceUnpaidRepayments,
+
+        // Account Officers
+        officers,
+        activeOfficers,
+        syncLoadAllOfficers,
+        syncLoadActiveOfficers,
+        syncCreateOfficer,
+        syncToggleOfficerStatus,
       }}
     >
       {children}

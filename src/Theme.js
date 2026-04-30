@@ -1,44 +1,63 @@
 import { createTheme } from "@mui/material/styles";
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: "#1976d2", // Horizon-style blue
+const createAppTheme = (mode = "light") =>
+  createTheme({
+    palette: {
+      mode,
+      primary: {
+        main: "#1e3a8a",
+      },
+      secondary: {
+        main: "#0f766e",
+      },
+      background: {
+        default: mode === "dark" ? "#0b1220" : "#f3f7fb",
+        paper: mode === "dark" ? "#111827" : "#ffffff",
+      },
+      success: {
+        main: "#16a34a",
+      },
+      error: {
+        main: "#dc2626",
+      },
+      warning: {
+        main: "#d97706",
+      },
+      text: {
+        primary: mode === "dark" ? "#e5e7eb" : "#0f172a",
+        secondary: mode === "dark" ? "#cbd5e1" : "#475569",
+      },
     },
-    secondary: {
-      main: "#9c27b0", // Purple accent
+    typography: {
+      fontFamily: "Manrope, Nunito Sans, Segoe UI, sans-serif",
+      h4: {
+        fontWeight: 700,
+      },
+      h6: {
+        fontWeight: 600,
+      },
     },
-    background: {
-      default: "#f8f9fa", // Light gray background
-      paper: "#ffffff",   // White cards
+    shape: {
+      borderRadius: 12,
     },
-    success: {
-      main: "#4caf50", // Green for Paid
+    components: {
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 10,
+            textTransform: "none",
+            fontWeight: 600,
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundImage: "none",
+          },
+        },
+      },
     },
-    error: {
-      main: "#f44336", // Red for Missed
-    },
-    warning: {
-      main: "#ff9800", // Orange for alerts
-    },
-  },
-  typography: {
-    fontFamily: "Inter, Roboto, Arial, sans-serif",
-    h4: {
-      fontWeight: 700,
-      color: "#333",
-    },
-    h6: {
-      fontWeight: 600,
-      color: "#555",
-    },
-    body2: {
-      color: "#777",
-    },
-  },
-  shape: {
-    borderRadius: 12, // Rounded corners for cards/buttons
-  },
-});
+  });
 
-export default theme;
+export default createAppTheme;
