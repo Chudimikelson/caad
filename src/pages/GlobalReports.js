@@ -36,6 +36,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
+import { buildLoanCycleMap, getLoanCycle } from "../utils/loanCycle";
 
 const formatNaira = (value) =>
   new Intl.NumberFormat("en-NG", {
@@ -81,6 +82,7 @@ const getRepaymentState = (status) => {
 
 const GlobalReports = () => {
   const { loans, repayments } = useContext(DataContext);
+  const loanCycleMap = useMemo(() => buildLoanCycleMap(loans), [loans]);
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
@@ -225,6 +227,16 @@ const GlobalReports = () => {
   ).length;
   const missedCount = filteredRepayments.filter((repayment) => repayment.status === "❌").length;
 
+  const paidAmount = filteredRepayments
+    .filter((repayment) => repayment.status === "✅")
+    .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
+  const pendingAmount = filteredRepayments
+    .filter((repayment) => repayment.status !== "✅" && repayment.status !== "❌")
+    .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
+  const missedAmount = filteredRepayments
+    .filter((repayment) => repayment.status === "❌")
+    .reduce((sum, repayment) => sum + Number(repayment.amount || 0), 0);
+
   const branchRollups = useMemo(() => {
     const map = new Map();
 
@@ -308,6 +320,12 @@ const GlobalReports = () => {
     ...item,
     percentage: totalStatusCount ? (item.value / totalStatusCount) * 100 : 0,
   }));
+
+  const statusAmountData = [
+    { name: "Paid", value: paidAmount, color: "#16a34a" },
+    { name: "Pending", value: pendingAmount, color: "#d97706" },
+    { name: "Missed", value: missedAmount, color: "#dc2626" },
+  ];
 
   const summaryCards = [
     {
@@ -403,14 +421,6 @@ const GlobalReports = () => {
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
-      <Typography variant="h4" gutterBottom>
-        Supervisor Reports
-      </Typography>
-      <Typography variant="body1" sx={{ color: "#475569", mb: 2.5 }}>
-        Review portfolio-wide repayment performance, narrow the report by team or branch,
-        and spot missed collections faster.
-      </Typography>
-
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
         {summaryCards.map((card) => (
           <Grid key={card.title} size={{ xs: 12, sm: 6, xl: 3 }}>
@@ -557,7 +567,7 @@ const GlobalReports = () => {
       </Paper>
 
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        <Grid size={{ xs: 12, xl: 8 }}>
+        <Grid size={{ xs: 12, xl: 7 }}>
           <Paper
             sx={{
               p: 2,
@@ -566,16 +576,29 @@ const GlobalReports = () => {
               border: "1px solid #e2e8f0",
             }}
           >
-            <Typography variant="h6" fontWeight={700} mb={1} color="#1e3a8a">
+            <Typography variant="h6" fontWeight={700} mb={2} color="#1e3a8a">
               Repayment Trend by Month
             </Typography>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={monthlyTrendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="month" />
-                <YAxis tickFormatter={formatMillions} />
-                <Tooltip formatter={(value) => formatNaira(value)} />
-                <Legend />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(59, 130, 246, 0.12)" />
+                <XAxis dataKey="month" tick={{ fill: "#64748b", fontSize: 12 }} />
+                <YAxis tickFormatter={formatMillions} tick={{ fill: "#64748b", fontSize: 12 }} />
+                <Tooltip 
+                  formatter={(value) => formatNaira(value)}
+                  contentStyle={{
+                    backgroundColor: "rgba(15, 23, 42, 0.95)",
+                    border: "1px solid rgba(59, 130, 246, 0.2)",
+                    borderRadius: "6px",
+                    color: "#f8fbff",
+                  }}
+                  labelStyle={{ color: "#a3aed0" }}
+                />
+                <Legend 
+                  wrapperStyle={{ paddingTop: "16px" }}
+                  iconType="square"
+                  formatter={(value) => <span style={{ color: "#475569", fontSize: "12px", fontWeight: 500 }}>{value}</span>}
+                />
                 <Bar dataKey="paid" fill="#16a34a" name="Paid Amount" radius={[8, 8, 0, 0]} />
                 <Bar dataKey="pending" fill="#d97706" name="Pending Amount" radius={[8, 8, 0, 0]} />
                 <Bar dataKey="missed" fill="#dc2626" name="Missed Amount" radius={[8, 8, 0, 0]} />
@@ -584,7 +607,7 @@ const GlobalReports = () => {
           </Paper>
         </Grid>
 
-        <Grid size={{ xs: 12, xl: 4 }}>
+        <Grid size={{ xs: 12, xl: 5 }}>
           <Paper
             sx={{
               p: 2,
@@ -594,35 +617,91 @@ const GlobalReports = () => {
               height: "100%",
             }}
           >
-            <Typography variant="h6" fontWeight={700} mb={1} color="#1e3a8a">
+            <Typography variant="h6" fontWeight={700} mb={2} color="#1e3a8a">
               Repayment Status Distribution
             </Typography>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={statusPieData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={92}
-                  innerRadius={46}
-                  label={({ name, percentage }) => `${name} ${percentage.toFixed(1)}%`}
-                  labelLine={false}
-                >
-                  {statusPieData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, name, context) => {
-                    const percent = context?.payload?.percentage ?? 0;
-                    return [`${value} (${percent.toFixed(1)}%)`, name];
-                  }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" sx={{ color: "#64748b", mb: 1.5, fontWeight: 700, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  By Count (%)
+                </Typography>
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie
+                      data={statusPieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={74}
+                      innerRadius={40}
+                      label={({ percentage }) => `${percentage.toFixed(1)}%`}
+                      labelLine={false}
+                    >
+                      {statusPieData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name, context) => {
+                        const percent = context?.payload?.percentage ?? 0;
+                        return [`${value} (${percent.toFixed(1)}%)`, name];
+                      }}
+                      contentStyle={{
+                        backgroundColor: "rgba(15, 23, 42, 0.95)",
+                        border: "1px solid rgba(59, 130, 246, 0.2)",
+                        borderRadius: "6px",
+                        color: "#f8fbff",
+                      }}
+                      labelStyle={{ color: "#a3aed0" }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: "12px" }}
+                      formatter={(value) => <span style={{ color: "#475569", fontSize: "12px", fontWeight: 500 }}>{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="body2" sx={{ color: "#64748b", mb: 1.5, fontWeight: 700, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  By Amount
+                </Typography>
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie
+                      data={statusAmountData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={74}
+                      innerRadius={40}
+                      label={({ value }) => `${formatMillions(value)}`}
+                      labelLine={false}
+                    >
+                      {statusAmountData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value, name) => [formatNaira(value), name]}
+                      contentStyle={{
+                        backgroundColor: "rgba(15, 23, 42, 0.95)",
+                        border: "1px solid rgba(59, 130, 246, 0.2)",
+                        borderRadius: "6px",
+                        color: "#f8fbff",
+                      }}
+                      labelStyle={{ color: "#a3aed0" }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: "12px" }}
+                      formatter={(value) => <span style={{ color: "#475569", fontSize: "12px", fontWeight: 500 }}>{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Grid>
+            </Grid>
           </Paper>
         </Grid>
       </Grid>
@@ -642,11 +721,11 @@ const GlobalReports = () => {
             </Typography>
             <Table size="small">
               <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>Branch</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Loans</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Disbursed</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>P/P/M</TableCell>
+                <TableRow sx={{ bgcolor: "rgba(59, 130, 246, 0.08)", borderBottom: "2px solid rgba(59, 130, 246, 0.16)" }}>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Branch</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Loans</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Disbursed</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>P/P/M</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -657,12 +736,20 @@ const GlobalReports = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  branchRollups.slice(0, 6).map((item) => (
-                    <TableRow key={item.branch}>
-                      <TableCell>{item.branch}</TableCell>
-                      <TableCell>{item.loans}</TableCell>
-                      <TableCell>{formatNaira(item.disbursed)}</TableCell>
-                      <TableCell>{`${item.paid}/${item.pending}/${item.missed}`}</TableCell>
+                  branchRollups.slice(0, 6).map((item, idx) => (
+                    <TableRow
+                      key={item.branch}
+                      sx={{
+                        bgcolor: idx % 2 === 0 ? "rgba(59, 130, 246, 0.04)" : "transparent",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                        "&:hover": { bgcolor: "rgba(59, 130, 246, 0.10)" },
+                        transition: "background-color 0.2s ease",
+                      }}
+                    >
+                      <TableCell sx={{ py: 1.5 }}>{item.branch}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{item.loans}</TableCell>
+                      <TableCell sx={{ py: 1.5, fontWeight: 600 }}>{formatNaira(item.disbursed)}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{`${item.paid}/${item.pending}/${item.missed}`}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -685,11 +772,11 @@ const GlobalReports = () => {
             </Typography>
             <Table size="small">
               <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>Officer</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Loans</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Disbursed</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>P/P/M</TableCell>
+                <TableRow sx={{ bgcolor: "rgba(59, 130, 246, 0.08)", borderBottom: "2px solid rgba(59, 130, 246, 0.16)" }}>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Officer</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Loans</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Disbursed</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>P/P/M</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -700,12 +787,20 @@ const GlobalReports = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  officerRollups.slice(0, 6).map((item) => (
-                    <TableRow key={item.officer}>
-                      <TableCell>{item.officer}</TableCell>
-                      <TableCell>{item.loans}</TableCell>
-                      <TableCell>{formatNaira(item.disbursed)}</TableCell>
-                      <TableCell>{`${item.paid}/${item.pending}/${item.missed}`}</TableCell>
+                  officerRollups.slice(0, 6).map((item, idx) => (
+                    <TableRow
+                      key={item.officer}
+                      sx={{
+                        bgcolor: idx % 2 === 0 ? "rgba(59, 130, 246, 0.04)" : "transparent",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                        "&:hover": { bgcolor: "rgba(59, 130, 246, 0.10)" },
+                        transition: "background-color 0.2s ease",
+                      }}
+                    >
+                      <TableCell sx={{ py: 1.5 }}>{item.officer}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{item.loans}</TableCell>
+                      <TableCell sx={{ py: 1.5, fontWeight: 600 }}>{formatNaira(item.disbursed)}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{`${item.paid}/${item.pending}/${item.missed}`}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -748,13 +843,13 @@ const GlobalReports = () => {
         <TableContainer>
           <Table stickyHeader>
             <TableHead>
-              <TableRow>
-                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Customer Name</TableCell>
-                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Scheduled Installment</TableCell>
-                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Repayment Day</TableCell>
-                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Account Officer</TableCell>
-                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Branch</TableCell>
-                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Repayment Summary</TableCell>
+              <TableRow sx={{ bgcolor: "rgba(59, 130, 246, 0.08)", borderBottom: "2px solid rgba(59, 130, 246, 0.16)" }}>
+                <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Customer Name</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Scheduled Installment</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Repayment Day</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Account Officer</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Branch</TableCell>
+                <TableCell sx={{ fontWeight: 700, color: "#1e3a8a", fontSize: "0.875rem" }}>Repayment Summary</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -765,19 +860,48 @@ const GlobalReports = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                reportRows.map((row) => {
+                reportRows.map((row, idx) => {
                   return (
-                    <TableRow key={row.id} hover sx={{ "&:nth-of-type(odd)": { bgcolor: "#fcfdff" } }}>
-                      <TableCell>{row.customerName}</TableCell>
-                      <TableCell>{formatNaira(row.installmentAmount)}</TableCell>
-                      <TableCell>{row.repaymentDay}</TableCell>
-                      <TableCell>{row.officer}</TableCell>
-                      <TableCell>{row.branch}</TableCell>
-                      <TableCell>
+                    <TableRow
+                      key={row.id}
+                      sx={{
+                        bgcolor: idx % 2 === 0 ? "rgba(59, 130, 246, 0.04)" : "transparent",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                        "&:hover": { bgcolor: "rgba(59, 130, 246, 0.10)" },
+                        transition: "background-color 0.2s ease",
+                      }}
+                    >
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                          <Box
+                            component="sup"
+                            sx={{
+                              fontSize: "0.62rem",
+                              fontWeight: 700,
+                              lineHeight: 1,
+                              bgcolor: "rgba(30,58,138,0.10)",
+                              color: "#1e3a8a",
+                              borderRadius: "999px",
+                              px: 0.6,
+                              py: 0.15,
+                              alignSelf: "flex-start",
+                              transform: "translateY(-0.35em)",
+                            }}
+                          >
+                            {getLoanCycle(loanCycleMap, { id: row.id })}
+                          </Box>
+                          <span>{row.customerName}</span>
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ py: 1.5, fontWeight: 600 }}>{formatNaira(row.installmentAmount)}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{row.repaymentDay}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{row.officer}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>{row.branch}</TableCell>
+                      <TableCell sx={{ py: 1.5 }}>
                         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                          <Chip label={`Paid ${row.paidForLoan}`} size="small" sx={{ bgcolor: "#dcfce7", color: "#166534", fontWeight: 700 }} />
-                          <Chip label={`Pending ${row.pendingForLoan}`} size="small" sx={{ bgcolor: "#fef3c7", color: "#92400e", fontWeight: 700 }} />
-                          <Chip label={`Missed ${row.missedForLoan}`} size="small" sx={{ bgcolor: "#fee2e2", color: "#991b1b", fontWeight: 700 }} />
+                          <Chip label={`Paid ${row.paidForLoan}`} size="small" sx={{ bgcolor: "rgba(22, 163, 74, 0.18)", color: "#166534", fontWeight: 700, fontSize: "0.75rem" }} />
+                          <Chip label={`Pending ${row.pendingForLoan}`} size="small" sx={{ bgcolor: "rgba(217, 119, 6, 0.18)", color: "#92400e", fontWeight: 700, fontSize: "0.75rem" }} />
+                          <Chip label={`Missed ${row.missedForLoan}`} size="small" sx={{ bgcolor: "rgba(220, 38, 38, 0.18)", color: "#991b1b", fontWeight: 700, fontSize: "0.75rem" }} />
                         </Stack>
                       </TableCell>
                     </TableRow>

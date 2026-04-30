@@ -11,7 +11,12 @@ import Loans from "./pages/Loans";
 import Repayments from "./pages/Repayments";
 import Dashboard from "./pages/Dashboard";
 import GlobalReports from "./pages/GlobalReports";
+import LoanAgingAnalysis from "./pages/LoanAgingAnalysis";
 import MyReports from "./pages/MyReports";
+import AccountOfficerManagement from "./pages/AccountOfficerManagement";
+import LoanSettings from "./pages/LoanSettings";
+import BranchManagement from "./pages/BranchManagement";
+import StaffProfile from "./pages/StaffProfile";
 import { Box, CircularProgress } from "@mui/material";
 
 // ProtectedRoute component that checks authentication
@@ -133,6 +138,36 @@ function App() {
           }
         />
         <Route
+          path="/account-officers"
+          element={
+            <ProtectedRoute requiredRole="Super Admin">
+              <Layout>
+                <AccountOfficerManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/loan-settings"
+          element={
+            <ProtectedRoute requiredRole="Super Admin">
+              <Layout>
+                <LoanSettings />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/branch-management"
+          element={
+            <ProtectedRoute requiredRole="Super Admin">
+              <Layout>
+                <BranchManagement />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/loans"
           element={
             <ProtectedRoute>
@@ -163,11 +198,31 @@ function App() {
           }
         />
         <Route
+          path="/loan-aging-analysis"
+          element={
+            <ProtectedRoute requiredRole="Supervisor">
+              <Layout>
+                <LoanAgingAnalysis />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/my-reports"
           element={
             <ProtectedRoute requiredRole="Relationship Manager">
               <Layout>
                 <MyReports />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/staff-profile"
+          element={
+            <ProtectedRoute requiredRole="Relationship Manager">
+              <Layout>
+                <StaffProfile />
               </Layout>
             </ProtectedRoute>
           }

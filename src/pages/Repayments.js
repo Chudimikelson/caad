@@ -16,11 +16,15 @@ import {
   TableHead,
   TableRow,
   Paper,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material";
 import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
 import PendingActionsRoundedIcon from "@mui/icons-material/PendingActionsRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import { buildLoanCycleMap, getLoanCycle } from "../utils/loanCycle";
+import RepaymentCard from "../components/RepaymentCard";
 
 const formatNaira = (value) =>
   new Intl.NumberFormat("en-NG", {
@@ -30,7 +34,51 @@ const formatNaira = (value) =>
   }).format(Number(value || 0));
 
 const Repayments = () => {
-  const { loans, repayments } = useContext(DataContext);
+  const { loans, repayments, user } = useContext(DataContext);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isRelationshipManager = user?.role === "Relationship Manager";
+  const managerNames = useMemo(() => {
+    if (!isRelationshipManager) return [];
+
+    const names = new Set();
+    const addVariant = (value) => {
+      if (typeof value !== "string") return;
+      const normalized = value.trim();
+      if (!normalized) return;
+      names.add(normalized);
+
+      const withoutOfficerSuffix = normalized.replace(/\s*\(Officer\)$/i, "").trim();
+      if (withoutOfficerSuffix) names.add(withoutOfficerSuffix);
+    };
+
+    addVariant(user?.name);
+    addVariant(user?.accountOfficer?.name);
+
+    return Array.from(names);
+  }, [isRelationshipManager, user]);
+
+  const scopedLoans = useMemo(() => {
+    if (!isRelationshipManager) return loans;
+    if (!managerNames.length) return [];
+
+    return loans.filter((loan) => managerNames.includes(String(loan.officer || "").trim()));
+  }, [isRelationshipManager, loans, managerNames]);
+
+  const scopedLoanIds = useMemo(() => new Set(scopedLoans.map((loan) => loan.id)), [scopedLoans]);
+
+  const scopedRepayments = useMemo(() => {
+    if (!isRelationshipManager) return repayments;
+    if (!managerNames.length) return [];
+
+    return repayments.filter((repayment) => {
+      const repaymentOfficer = String(repayment.officer || "").trim();
+      if (managerNames.includes(repaymentOfficer)) return true;
+      return scopedLoanIds.has(repayment.loanId);
+    });
+  }, [isRelationshipManager, managerNames, repayments, scopedLoanIds]);
+
+  const loanCycleMap = useMemo(() => buildLoanCycleMap(scopedLoans), [scopedLoans]);
 
   const [filters, setFilters] = useState({
     startDate: "",
@@ -45,24 +93,24 @@ const Repayments = () => {
     () =>
       Array.from(
         new Set(
-          loans
+          scopedLoans
             .map((loan) => (typeof loan.officer === "string" ? loan.officer.trim() : ""))
             .filter(Boolean)
         )
       ).sort((left, right) => left.localeCompare(right)),
-    [loans]
+    [scopedLoans]
   );
 
   const branches = useMemo(
     () =>
       Array.from(
         new Set(
-          loans
+          scopedLoans
             .map((loan) => (typeof loan.branch === "string" ? loan.branch.trim() : ""))
             .filter(Boolean)
         )
       ).sort((left, right) => left.localeCompare(right)),
-    [loans]
+    [scopedLoans]
   );
 
   const getRepaymentStatus = (repayment) => {
@@ -72,8 +120,8 @@ const Repayments = () => {
   };
 
   const filteredRepayments = useMemo(() => {
-    return repayments.filter((repayment) => {
-      const repaymentLoan = loans.find((loan) => loan.id === repayment.loanId);
+    return scopedRepayments.filter((repayment) => {
+      const repaymentLoan = scopedLoans.find((loan) => loan.id === repayment.loanId);
       const repaymentDate = repayment.date ? new Date(repayment.date) : null;
       const startDate = filters.startDate ? new Date(filters.startDate) : null;
       const endDate = filters.endDate ? new Date(filters.endDate) : null;
@@ -117,10 +165,10 @@ const Repayments = () => {
 
       return true;
     });
-  }, [repayments, loans, filters]);
+  }, [scopedRepayments, scopedLoans, filters]);
 
   const filteredLoanIds = new Set(filteredRepayments.map((repayment) => repayment.loanId));
-  const filteredLoans = loans.filter((loan) => filteredLoanIds.has(loan.id));
+  const filteredLoans = scopedLoans.filter((loan) => filteredLoanIds.has(loan.id));
 
   const paidCount = filteredRepayments.filter((r) => r.status === "✅").length;
   const missedCount = filteredRepayments.filter((r) => r.status === "❌").length;
@@ -149,6 +197,54 @@ const Repayments = () => {
       status: "",
       customerSearch: "",
     });
+  };
+
+  const exportToCSV = () => {
+    // Create array of repayment records
+    const csvData = filteredRepayments.map((rep) => {
+      const loan = loans.find((l) => l.id === rep.loanId);
+      return {
+        "Customer Name": rep.customerName || "",
+        "Loan Amount": rep.loanAmount || "",
+        "Repayment Amount": rep.amount || "",
+        "Repayment Date": rep.date ? new Date(rep.date).toLocaleDateString() : "",
+        "Status": rep.status === "✅" ? "Paid" : rep.status === "❌" ? "Missed" : "Pending",
+        "Account Officer": rep.officer || "",
+        "Branch": rep.branch || "",
+        "Loan Status": loan ? loan.lifecycleStatus : "",
+      };
+    });
+
+    if (csvData.length === 0) {
+      alert("No repayments to export based on current filters.");
+      return;
+    }
+
+    // Create CSV headers
+    const headers = Object.keys(csvData[0]);
+    const csvContent = [
+      headers.join(","),
+      ...csvData.map((row) =>
+        headers
+          .map((header) => {
+            const value = row[header];
+            const valueStr = String(value);
+            return valueStr.includes(",") ? `"${valueStr.replace(/"/g, '""')}"` : valueStr;
+          })
+          .join(",")
+      ),
+    ].join("\n");
+
+    // Trigger download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `repayments_export_${new Date().toISOString().split("T")[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Helper function to get ordinal day (2nd, 3rd, etc.)
@@ -200,21 +296,13 @@ const Repayments = () => {
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
-      <Typography variant="h4" gutterBottom>
-        Repayments
-      </Typography>
-
-      <Typography variant="body1" sx={{ color: "#475569", mb: 2 }}>
-        Track scheduled installments, payment progress, and missed collections across all active loans.
-      </Typography>
-
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
         {summaryCards.map((card) => (
           <Grid key={card.title} size={{ xs: 12, sm: 6, xl: 4 }}>
             <Paper
               sx={{
                 p: 2.25,
-                borderRadius: 0.5,
+                borderRadius: 0.75,
                 border: "1px solid #e2e8f0",
                 boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
                 background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
@@ -264,7 +352,7 @@ const Repayments = () => {
         sx={{
           p: 2.5,
           mb: 2.5,
-          borderRadius: 0.5,
+          borderRadius: 0.75,
           border: "1px solid #e2e8f0",
           boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
         }}
@@ -293,22 +381,24 @@ const Repayments = () => {
             />
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, lg: 2.4 }}>
-            <TextField
-              select
-              label="Relationship Manager"
-              fullWidth
-              value={filters.relationshipManager}
-              onChange={handleFilterChange("relationshipManager")}
-            >
-              <MenuItem value="">All Relationship Managers</MenuItem>
-              {relationshipManagers.map((manager) => (
-                <MenuItem key={manager} value={manager}>
-                  {manager}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
+          {!isRelationshipManager && (
+            <Grid size={{ xs: 12, sm: 6, lg: 2.4 }}>
+              <TextField
+                select
+                label="Relationship Manager"
+                fullWidth
+                value={filters.relationshipManager}
+                onChange={handleFilterChange("relationshipManager")}
+              >
+                <MenuItem value="">All Relationship Managers</MenuItem>
+                {relationshipManagers.map((manager) => (
+                  <MenuItem key={manager} value={manager}>
+                    {manager}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+          )}
 
           <Grid size={{ xs: 12, sm: 6, lg: 2.4 }}>
             <TextField
@@ -342,9 +432,14 @@ const Repayments = () => {
             </TextField>
           </Grid>
 
-          <Grid size={{ xs: 12 }}>
-            <Button variant="outlined" onClick={resetFilters}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Button variant="outlined" onClick={resetFilters} sx={{ width: "100%" }}>
               Reset Filters
+            </Button>
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Button variant="contained" color="success" onClick={exportToCSV} sx={{ width: "100%" }}>
+              Export CSV
             </Button>
           </Grid>
         </Grid>
@@ -376,70 +471,126 @@ const Repayments = () => {
         />
       </Box>
 
-      <TableContainer
-        component={Paper}
-        sx={{ borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}
-      >
-        <Table stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Customer Name</TableCell>
-              <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Scheduled Installment</TableCell>
-              <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Day of Repayment</TableCell>
-              <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Account Officer</TableCell>
-              <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Branch</TableCell>
-              <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Repayment Status</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredLoans.length === 0 ? (
+      {/* Repayments Table/Cards */}
+      {isMobile ? (
+        // Mobile Card View
+        <Box>
+          {filteredRepayments.length === 0 ? (
+            <Paper
+              sx={{
+                p: 3,
+                textAlign: "center",
+                borderRadius: 0.75,
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+              }}
+            >
+              <Typography sx={{ color: "#64748b" }}>
+                No repayments match the selected filters.
+              </Typography>
+            </Paper>
+          ) : (
+            filteredRepayments.map((repayment, idx) => {
+              const loan = loans.find((l) => l.id === repayment.loanId);
+              return (
+                <RepaymentCard
+                  key={repayment.id || idx}
+                  repayment={repayment}
+                  loan={loan}
+                  formatCurrency={formatNaira}
+                />
+              );
+            })
+          )}
+        </Box>
+      ) : (
+        // Desktop Table View
+        <TableContainer
+          component={Paper}
+          sx={{ borderRadius: 0.75, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}
+        >
+          <Table stickyHeader>
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={6} sx={{ py: 5, textAlign: "center", color: "#64748b" }}>
-                  No repayments match the selected filters.
-                </TableCell>
+                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Customer Name</TableCell>
+                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Scheduled Installment</TableCell>
+                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Day of Repayment</TableCell>
+                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Account Officer</TableCell>
+                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Branch</TableCell>
+                <TableCell sx={{ bgcolor: "#f8fafc", fontWeight: 700 }}>Repayment Status</TableCell>
               </TableRow>
-            ) : (
-              filteredLoans.map((loan) => {
-                const loanRepayments = filteredRepayments
-                  .filter((r) => r.loanId === loan.id)
-                  .sort((left, right) => new Date(left.date) - new Date(right.date));
-                const repaymentDay = getOrdinalDay(loan.startDate);
-                const installmentAmount = loanRepayments[0]?.amount || 0;
-                const paidForLoan = loanRepayments.filter((r) => r.status === "✅").length;
-                const pendingForLoan = loanRepayments.filter((r) => r.status !== "✅" && r.status !== "❌").length;
-                const missedForLoan = loanRepayments.filter((r) => r.status === "❌").length;
+            </TableHead>
+            <TableBody>
+              {filteredLoans.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ py: 5, textAlign: "center", color: "#64748b" }}>
+                    No repayments match the selected filters.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredLoans.map((loan) => {
+                  const loanRepayments = filteredRepayments
+                    .filter((r) => r.loanId === loan.id)
+                    .sort((left, right) => new Date(left.date) - new Date(right.date));
+                  const repaymentDay = getOrdinalDay(loan.startDate);
+                  const installmentAmount = loanRepayments[0]?.amount || 0;
+                  const paidForLoan = loanRepayments.filter((r) => r.status === "✅").length;
+                  const pendingForLoan = loanRepayments.filter((r) => r.status !== "✅" && r.status !== "❌").length;
+                  const missedForLoan = loanRepayments.filter((r) => r.status === "❌").length;
 
-                return (
-                  <TableRow
-                    key={loan.id}
-                    hover
-                    sx={{
-                      "&:nth-of-type(odd)": { bgcolor: "#fcfdff" },
-                    }}
-                  >
-                    <TableCell>{loan.customerName}</TableCell>
-                    <TableCell>{installmentAmount ? formatNaira(installmentAmount) : "-"}</TableCell>
-                    <TableCell>{repaymentDay}</TableCell>
-                    <TableCell>{loan.officer || "-"}</TableCell>
-                    <TableCell>{loan.branch || "-"}</TableCell>
-                    <TableCell>
-                      {loanRepayments.length === 0
-                        ? "-"
-                        : (
-                            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                              <Chip label={`Paid ${paidForLoan}`} size="small" sx={{ bgcolor: "#dcfce7", color: "#166534", fontWeight: 700 }} />
-                              <Chip label={`Pending ${pendingForLoan}`} size="small" sx={{ bgcolor: "#fef3c7", color: "#92400e", fontWeight: 700 }} />
-                              <Chip label={`Missed ${missedForLoan}`} size="small" sx={{ bgcolor: "#fee2e2", color: "#991b1b", fontWeight: 700 }} />
-                            </Stack>
-                          )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                  return (
+                    <TableRow
+                      key={loan.id}
+                      hover
+                      sx={{
+                        "&:nth-of-type(odd)": { bgcolor: "#fcfdff" },
+                      }}
+                    >
+                      <TableCell>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                          <Box
+                            component="sup"
+                            sx={{
+                              fontSize: "0.62rem",
+                              fontWeight: 700,
+                              lineHeight: 1,
+                              bgcolor: "rgba(30,58,138,0.10)",
+                              color: "#1e3a8a",
+                              borderRadius: "999px",
+                              px: 0.6,
+                              py: 0.15,
+                              alignSelf: "flex-start",
+                              transform: "translateY(-0.35em)",
+                            }}
+                          >
+                            {getLoanCycle(loanCycleMap, loan)}
+                          </Box>
+                          <span>{loan.customerName}</span>
+                        </Box>
+                      </TableCell>
+                      <TableCell>{installmentAmount ? formatNaira(installmentAmount) : "-"}</TableCell>
+                      <TableCell>{repaymentDay}</TableCell>
+                      <TableCell>{loan.officer || "-"}</TableCell>
+                      <TableCell>{loan.branch || "-"}</TableCell>
+                      <TableCell>
+                        {loanRepayments.length === 0
+                          ? "-"
+                          : (
+                              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                                <Chip label={`Paid ${paidForLoan}`} size="small" sx={{ bgcolor: "#dcfce7", color: "#166534", fontWeight: 700 }} />
+                                <Chip label={`Pending ${pendingForLoan}`} size="small" sx={{ bgcolor: "#fef3c7", color: "#92400e", fontWeight: 700 }} />
+                                <Chip label={`Missed ${missedForLoan}`} size="small" sx={{ bgcolor: "#fee2e2", color: "#991b1b", fontWeight: 700 }} />
+                              </Stack>
+                            )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
     </Box>
   );
 };

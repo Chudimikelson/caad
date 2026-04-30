@@ -21,6 +21,7 @@ export const DataProvider = ({ children }) => {
   // ========== Account Officers State ==========
   const [officers, setOfficers] = useState([]);
   const [activeOfficers, setActiveOfficers] = useState([]);
+  const [loanTypes, setLoanTypes] = useState([]);
 
   // ========== Auto-login on app initialization ==========
   useEffect(() => {
@@ -63,13 +64,15 @@ export const DataProvider = ({ children }) => {
 
     const load = async () => {
       try {
-        const [serverLoans, serverReps] = await Promise.all([
+        const [serverLoans, serverReps, serverLoanTypes] = await Promise.all([
           api.fetchLoans(),
           api.fetchRepayments(),
+          api.fetchLoanTypes().catch(() => []),
         ]);
         if (!mounted) return;
         setLoans(serverLoans || []);
         setRepayments(serverReps || []);
+        setLoanTypes(serverLoanTypes || []);
         setServerAvailable(true);
         localStorage.setItem("loans", JSON.stringify(serverLoans || []));
         localStorage.setItem("repayments", JSON.stringify(serverReps || []));
@@ -80,6 +83,7 @@ export const DataProvider = ({ children }) => {
         const rawReps = localStorage.getItem("repayments");
         setLoans(rawLoans ? JSON.parse(rawLoans) : []);
         setRepayments(rawReps ? JSON.parse(rawReps) : []);
+        setLoanTypes([]);
       }
     };
 
@@ -433,6 +437,71 @@ export const DataProvider = ({ children }) => {
     [officers, syncLoadActiveOfficers]
   );
 
+  /* -------------------- Loan Type helpers -------------------- */
+
+  const syncLoadLoanTypes = useCallback(async () => {
+    try {
+      const types = await api.fetchLoanTypes();
+      setLoanTypes(Array.isArray(types) ? types : []);
+      return types;
+    } catch (err) {
+      console.error("Failed to load loan types:", err);
+      setLoanTypes([]);
+      throw err;
+    }
+  }, []);
+
+  const syncCreateLoanType = useCallback(async (name, interestRate) => {
+    const created = await api.createLoanType({ name, interestRate });
+    await syncLoadLoanTypes();
+    return created;
+  }, [syncLoadLoanTypes]);
+
+  const syncUpdateLoanType = useCallback(async (id, patch) => {
+    const updated = await api.updateLoanType(id, patch);
+    await syncLoadLoanTypes();
+    return updated;
+  }, [syncLoadLoanTypes]);
+
+  const syncFetchAllLoanTypes = useCallback(async () => {
+    return api.fetchAllLoanTypes();
+  }, []);
+
+  const syncFetchRelationshipManagers = useCallback(async () => {
+    return api.fetchRelationshipManagers();
+  }, []);
+
+  const syncReassignCustomerManager = useCallback(
+    async ({ customerName, fromOfficer, toOfficer }) => {
+      const result = await api.reassignCustomerManager({ customerName, fromOfficer, toOfficer });
+
+      setLoans((prev) =>
+        prev.map((loan) => {
+          const customerMatch = loan.customerName === customerName;
+          const fromOfficerMatch = !fromOfficer || loan.officer === fromOfficer;
+          if (customerMatch && fromOfficerMatch) {
+            return { ...loan, officer: toOfficer };
+          }
+          return loan;
+        })
+      );
+
+      setRepayments((prev) =>
+        prev.map((rep) => {
+          const customerMatch = rep.customerName === customerName;
+          const fromOfficerMatch = !fromOfficer || rep.officer === fromOfficer;
+          if (customerMatch && fromOfficerMatch) {
+            return { ...rep, officer: toOfficer };
+          }
+          return rep;
+        })
+      );
+
+      return result;
+    },
+    []
+  );
+
   return (
     <DataContext.Provider
       value={{
@@ -469,6 +538,15 @@ export const DataProvider = ({ children }) => {
         syncLoadActiveOfficers,
         syncCreateOfficer,
         syncToggleOfficerStatus,
+
+        // Loan Types and reassignment
+        loanTypes,
+        syncLoadLoanTypes,
+        syncCreateLoanType,
+        syncUpdateLoanType,
+        syncFetchAllLoanTypes,
+        syncFetchRelationshipManagers,
+        syncReassignCustomerManager,
       }}
     >
       {children}

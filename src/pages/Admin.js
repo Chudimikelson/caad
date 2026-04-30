@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from "react";
+import React, { useState, useContext, useMemo, useEffect, useCallback } from "react";
 import { DataContext } from "../DataContext";
 import {
   Box,
@@ -26,12 +26,14 @@ import {
   FormControl,
   InputLabel,
 } from "@mui/material";
+import { fetchAvailableBranches } from "../api";
+import { buildLoanCycleMap, getLoanCycle } from "../utils/loanCycle";
 
 const Admin = () => {
   const {
     loans,
     repayments,
-    serverAvailable,
+    loanTypes,
     syncCreateLoan,
     syncCreateRepayment,
     syncUpdateLoan,
@@ -44,7 +46,7 @@ const Admin = () => {
   const [newLoan, setNewLoan] = useState({
     customerName: "",
     amount: "",
-    interestRate: "",
+    loanType: "",
     tenor: "",
     startDate: "",
     officer: "",
@@ -60,7 +62,10 @@ const Admin = () => {
     relationshipManager: "",
     branch: "",
     customerSearch: "",
+    loanStatus: "",
+    repaymentStatus: "",
   });
+  const [availableBranches, setAvailableBranches] = useState([]);
 
   const relationshipManagers = Array.from(
     new Set(
@@ -81,6 +86,71 @@ const Admin = () => {
       ).sort((left, right) => left.localeCompare(right)),
     [loans]
   );
+
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const data = await fetchAvailableBranches();
+        const names = Array.isArray(data)
+          ? data.map((b) => String(b.name || "").trim()).filter(Boolean)
+          : [];
+        setAvailableBranches(names);
+      } catch (err) {
+        // Fallback to loan-derived branches if catalog endpoint fails.
+        setAvailableBranches([]);
+      }
+    };
+
+    loadBranches();
+  }, []);
+
+  const branchOptions = useMemo(() => {
+    const merged = new Set([...(availableBranches || []), ...branches]);
+    return Array.from(merged).sort((a, b) => a.localeCompare(b));
+  }, [availableBranches, branches]);
+
+  const loanTypeRateByName = useMemo(() => {
+    const pairs = (loanTypes || []).map((lt) => [lt.name, Number(lt.interestRate || 0)]);
+    return new Map(pairs);
+  }, [loanTypes]);
+  const loanCycleMap = useMemo(() => buildLoanCycleMap(loans), [loans]);
+
+  // Keep month/day alignment stable when source day exceeds target month length.
+  const addMonthsPreservingDay = useCallback((baseDate, monthsToAdd) => {
+    const source = new Date(baseDate);
+    const target = new Date(source);
+    const originalDay = source.getDate();
+
+    target.setDate(1);
+    target.setMonth(target.getMonth() + monthsToAdd);
+
+    const lastDayOfTargetMonth = new Date(
+      target.getFullYear(),
+      target.getMonth() + 1,
+      0
+    ).getDate();
+
+    target.setDate(Math.min(originalDay, lastDayOfTargetMonth));
+    return target;
+  }, []);
+
+  const getLoanLifecycleStatus = useCallback((loan) => {
+    const tenor = Math.max(Number(loan.tenor) || 0, 0);
+    const loanRepayments = repayments.filter((r) => r.loanId === loan.id);
+    const paidCount = loanRepayments.filter((r) => r.status === "✅").length;
+
+    if (tenor > 0 && paidCount >= tenor) {
+      return "Closed";
+    }
+
+    if (!loan.startDate || tenor <= 0) {
+      return "Active";
+    }
+
+    const maturityDate = addMonthsPreservingDay(loan.startDate, tenor);
+    const now = new Date();
+    return now >= maturityDate ? "Overdue" : "Active";
+  }, [repayments, addMonthsPreservingDay]);
 
   const filteredLoans = useMemo(() => {
     return loans.filter((loan) => {
@@ -115,9 +185,26 @@ const Admin = () => {
         }
       }
 
+      if (filters.loanStatus) {
+        if (getLoanLifecycleStatus(loan).toLowerCase() !== filters.loanStatus) {
+          return false;
+        }
+      }
+
+      if (filters.repaymentStatus) {
+        const loanReps = repayments.filter((r) => r.loanId === loan.id);
+        const hasMatch =
+          filters.repaymentStatus === "paid"
+            ? loanReps.some((r) => r.status === "✅")
+            : filters.repaymentStatus === "missed"
+            ? loanReps.some((r) => r.status === "❌")
+            : loanReps.some((r) => r.status !== "✅" && r.status !== "❌");
+        if (!hasMatch) return false;
+      }
+
       return true;
     });
-  }, [loans, filters]);
+  }, [loans, filters, repayments, getLoanLifecycleStatus]);
 
   const filteredLoanIds = useMemo(
     () => new Set(filteredLoans.map((loan) => loan.id)),
@@ -129,30 +216,12 @@ const Admin = () => {
     [repayments, filteredLoanIds]
   );
 
-  // Generate schedule (array of repayment objects without id)
-  const addMonthsPreservingDay = (baseDate, monthsToAdd) => {
-    const source = new Date(baseDate);
-    const target = new Date(source);
-    const originalDay = source.getDate();
-
-    target.setDate(1);
-    target.setMonth(target.getMonth() + monthsToAdd);
-
-    const lastDayOfTargetMonth = new Date(
-      target.getFullYear(),
-      target.getMonth() + 1,
-      0
-    ).getDate();
-
-    target.setDate(Math.min(originalDay, lastDayOfTargetMonth));
-    return target;
-  };
-
   const generateRepaymentSchedule = (loanId, loanData) => {
-    const totalRepayable =
-      Number(loanData.amount) +
-      (Number(loanData.amount) * Number(loanData.interestRate || 0)) / 100;
     const tenor = Math.max(Number(loanData.tenor) || 1, 1);
+    const principal = Number(loanData.amount);
+    const ratePerTenorUnit = Number(loanData.interestRate || 0);
+    const totalInterestRate = ratePerTenorUnit * tenor;
+    const totalRepayable = principal + (principal * totalInterestRate) / 100;
     const monthlyRepayment = totalRepayable / tenor;
     const start = new Date(loanData.startDate);
     const schedule = [];
@@ -180,10 +249,18 @@ const Admin = () => {
     setLoading(true);
 
     try {
+      const resolvedInterestRate = loanTypeRateByName.get(newLoan.loanType);
+      if (resolvedInterestRate == null) {
+        alert("Please select a valid loan type.");
+        setLoading(false);
+        return;
+      }
+
       const loanPayload = {
         customerName: newLoan.customerName,
         amount: Number(newLoan.amount),
-        interestRate: Number(newLoan.interestRate),
+        loanType: newLoan.loanType,
+        interestRate: Number(resolvedInterestRate),
         tenor: Number(newLoan.tenor),
         startDate: newLoan.startDate,
         officer: newLoan.officer,
@@ -207,7 +284,7 @@ const Admin = () => {
       setNewLoan({
         customerName: "",
         amount: "",
-        interestRate: "",
+        loanType: "",
         tenor: "",
         startDate: "",
         officer: "",
@@ -250,19 +327,28 @@ const Admin = () => {
       const amountChanged = Number(prevLoan.amount) !== Number(editingLoan.amount);
       const tenorChanged = Number(prevLoan.tenor) !== Number(editingLoan.tenor);
       const startDateChanged = prevLoan.startDate !== editingLoan.startDate;
+      const loanTypeChanged = (prevLoan.loanType || "") !== (editingLoan.loanType || "");
+
+      const resolvedInterestRate = loanTypeRateByName.get(editingLoan.loanType);
+      if (resolvedInterestRate == null) {
+        alert("Please select a valid loan type.");
+        setLoading(false);
+        return;
+      }
 
       // Update loan metadata first
       await syncUpdateLoan(editingLoan.id, {
         customerName: editingLoan.customerName,
         amount: Number(editingLoan.amount),
-        interestRate: Number(editingLoan.interestRate),
+        loanType: editingLoan.loanType,
+        interestRate: Number(resolvedInterestRate),
         tenor: Number(editingLoan.tenor),
         startDate: editingLoan.startDate,
         officer: editingLoan.officer,
         branch: editingLoan.branch,
       });
 
-      if (amountChanged || tenorChanged || startDateChanged) {
+      if (amountChanged || tenorChanged || startDateChanged || loanTypeChanged) {
         // Preserve paid repayments, replace unpaid ones via single server call
 
         // 1) Collect old repayments for this loan
@@ -358,6 +444,8 @@ const getStatusCounts = (loanId) => {
   return { paid, pending, missed, total: loanRepayments.length };
 };
 
+
+
 const allPaid = filteredRepayments.filter((r) => r.status === "✅").length;
 const allPending = filteredRepayments.filter((r) => r.status !== "✅" && r.status !== "❌").length;
 const allMissed = filteredRepayments.filter((r) => r.status === "❌").length;
@@ -373,7 +461,67 @@ const resetFilters = () => {
     relationshipManager: "",
     branch: "",
     customerSearch: "",
+    loanStatus: "",
+    repaymentStatus: "",
   });
+};
+
+const exportToCSV = () => {
+  // Create array of loan records with repayment summaries
+  const csvData = filteredLoans.map((loan) => {
+    const loanReps = filteredRepayments.filter((r) => r.loanId === loan.id);
+    const paidCount = loanReps.filter((r) => r.status === "✅").length;
+    const pendingCount = loanReps.filter((r) => r.status !== "✅" && r.status !== "❌").length;
+    const missedCount = loanReps.filter((r) => r.status === "❌").length;
+    
+    return {
+      "Customer Name": loan.customerName || "",
+      "Loan Amount": loan.amount || "",
+      "Loan Type": loan.loanType || "",
+      "Interest Rate (%)": loan.interestRate || "",
+      "Tenor (Months)": loan.tenor || "",
+      "Disbursement Date": loan.startDate ? new Date(loan.startDate).toLocaleDateString() : "",
+      "Account Officer": loan.officer || "",
+      "Branch": loan.branch || "",
+      "Loan Status": getLoanLifecycleStatus(loan),
+      "Paid Installments": paidCount,
+      "Pending Installments": pendingCount,
+      "Missed Installments": missedCount,
+      "Total Repayments": loanReps.length,
+    };
+  });
+
+  if (csvData.length === 0) {
+    alert("No loans to export based on current filters.");
+    return;
+  }
+
+  // Create CSV headers
+  const headers = Object.keys(csvData[0]);
+  const csvContent = [
+    headers.join(","),
+    ...csvData.map((row) =>
+      headers
+        .map((header) => {
+          const value = row[header];
+          // Escape quotes and wrap in quotes if contains comma
+          const valueStr = String(value);
+          return valueStr.includes(",") ? `"${valueStr.replace(/"/g, '""')}"` : valueStr;
+        })
+        .join(",")
+    ),
+  ].join("\n");
+
+  // Trigger download
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `loans_export_${new Date().toISOString().split("T")[0]}.csv`);
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
   return (
@@ -397,7 +545,7 @@ const resetFilters = () => {
       )}
 
       {/* Loan Form */}
-      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
+      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 0.75, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
         <Typography variant="h6" sx={{ mb: 2 }}>
           Add New Loan
         </Typography>
@@ -427,16 +575,23 @@ const resetFilters = () => {
           </Grid>
 
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
-              label="Interest Rate (%)"
-              type="number"
-              value={newLoan.interestRate}
-              onChange={(e) =>
-                setNewLoan((s) => ({ ...s, interestRate: e.target.value }))
-              }
-              required
-              fullWidth
-            />
+            <FormControl fullWidth required>
+              <InputLabel>Loan Type</InputLabel>
+              <Select
+                value={newLoan.loanType}
+                label="Loan Type"
+                onChange={(e) => setNewLoan((s) => ({ ...s, loanType: e.target.value }))}
+              >
+                <MenuItem value="">
+                  <em>Select Loan Type</em>
+                </MenuItem>
+                {(loanTypes || []).map((loanType) => (
+                  <MenuItem key={loanType.id || loanType.name} value={loanType.name}>
+                    {loanType.name} ({loanType.interestRate}% )
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
 
           <Grid size={{ xs: 12, sm: 6 }}>
@@ -484,12 +639,22 @@ const resetFilters = () => {
 
           <Grid size={{ xs: 12, sm: 6 }}>
             <TextField
+              select
               label="Branch"
               value={newLoan.branch}
               onChange={(e) => setNewLoan((s) => ({ ...s, branch: e.target.value }))}
               required
               fullWidth
-            />
+            >
+              <MenuItem value="">
+                <em>Select branch</em>
+              </MenuItem>
+              {branchOptions.map((branchName) => (
+                <MenuItem key={branchName} value={branchName}>
+                  {branchName}
+                </MenuItem>
+              ))}
+            </TextField>
           </Grid>
 
           <Grid size={{ xs: 12 }}>
@@ -512,7 +677,7 @@ const resetFilters = () => {
         Manage Repayments
       </Typography>
 
-      <Paper sx={{ p: 2.5, mb: 2.5, borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
+      <Paper sx={{ p: 2.5, mb: 2.5, borderRadius: 0.75, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
 
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
@@ -581,9 +746,42 @@ const resetFilters = () => {
             />
           </Grid>
 
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <TextField
+              select
+              label="Loan Status"
+              fullWidth
+              value={filters.loanStatus}
+              onChange={handleFilterChange("loanStatus")}
+            >
+              <MenuItem value="">All Loan Statuses</MenuItem>
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="overdue">Overdue</MenuItem>
+              <MenuItem value="closed">Closed</MenuItem>
+            </TextField>
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <TextField
+              select
+              label="Repayment Status"
+              fullWidth
+              value={filters.repaymentStatus}
+              onChange={handleFilterChange("repaymentStatus")}
+            >
+              <MenuItem value="">All Repayment Statuses</MenuItem>
+              <MenuItem value="paid">Has Paid</MenuItem>
+              <MenuItem value="pending">Has Pending</MenuItem>
+              <MenuItem value="missed">Has Missed</MenuItem>
+            </TextField>
+          </Grid>
+
           <Grid size={{ xs: 12 }}>
-            <Button variant="outlined" onClick={resetFilters}>
+            <Button variant="outlined" onClick={resetFilters} sx={{ mr: 1 }}>
               Reset Filters
+            </Button>
+            <Button variant="contained" color="success" onClick={exportToCSV}>
+              Export CSV
             </Button>
           </Grid>
         </Grid>
@@ -591,7 +789,7 @@ const resetFilters = () => {
 
       <TableContainer
         component={Paper}
-        sx={{ borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}
+        sx={{ borderRadius: 0.75, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}
       >
         <Table stickyHeader>
           <TableHead>
@@ -599,6 +797,7 @@ const resetFilters = () => {
               <TableCell>Customer Name</TableCell>
               <TableCell>Repayment Amount</TableCell>
               <TableCell>Repayment Day</TableCell>
+              <TableCell>Loan Status</TableCell>
               <TableCell>Repayment Status</TableCell>
               <TableCell>Account Officer</TableCell>
               <TableCell>Actions</TableCell>
@@ -608,7 +807,7 @@ const resetFilters = () => {
           <TableBody>
             {filteredLoans.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} sx={{ py: 5, textAlign: "center", color: "#64748b" }}>
+                <TableCell colSpan={7} sx={{ py: 5, textAlign: "center", color: "#64748b" }}>
                   No loans match the selected disbursement filters.
                 </TableCell>
               </TableRow>
@@ -621,14 +820,57 @@ const resetFilters = () => {
               if (loanRepayments.length === 0) return null;
 
               const repaymentDay = getOrdinalDay(loan.startDate);
-              const { paid, pending, missed, total } = getStatusCounts(loan.id);
+              const { paid, pending, missed } = getStatusCounts(loan.id);
               const monthlyInstallment = loanRepayments[0]?.amount || 0;
+              const loanStatus = getLoanLifecycleStatus(loan);
 
               return (
                 <TableRow key={loan.id}>
-                  <TableCell>{loan.customerName}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                      <Box
+                        component="sup"
+                        sx={{
+                          fontSize: "0.62rem",
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          bgcolor: "rgba(30,58,138,0.10)",
+                          color: "#1e3a8a",
+                          borderRadius: "999px",
+                          px: 0.6,
+                          py: 0.15,
+                          alignSelf: "flex-start",
+                          transform: "translateY(-0.35em)",
+                        }}
+                      >
+                        {getLoanCycle(loanCycleMap, loan)}
+                      </Box>
+                      <span>{loan.customerName}</span>
+                    </Box>
+                  </TableCell>
                   <TableCell>₦{monthlyInstallment?.toLocaleString() || "0"}</TableCell>
                   <TableCell>{repaymentDay}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={loanStatus}
+                      sx={{
+                        fontWeight: 700,
+                        bgcolor:
+                          loanStatus === "Closed"
+                            ? "#dcfce7"
+                            : loanStatus === "Overdue"
+                            ? "#fee2e2"
+                            : "#dbeafe",
+                        color:
+                          loanStatus === "Closed"
+                            ? "#166534"
+                            : loanStatus === "Overdue"
+                            ? "#991b1b"
+                            : "#1e3a8a",
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Box
                       sx={{
@@ -741,16 +983,23 @@ const resetFilters = () => {
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                label="Interest Rate (%)"
-                type="number"
-                value={editingLoan?.interestRate || ""}
-                onChange={(e) =>
-                  setEditingLoan((s) => ({ ...s, interestRate: e.target.value }))
-                }
-                fullWidth
-                margin="normal"
-              />
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Loan Type</InputLabel>
+                <Select
+                  value={editingLoan?.loanType || ""}
+                  label="Loan Type"
+                  onChange={(e) => setEditingLoan((s) => ({ ...s, loanType: e.target.value }))}
+                >
+                  <MenuItem value="">
+                    <em>Select Loan Type</em>
+                  </MenuItem>
+                  {(loanTypes || []).map((loanType) => (
+                    <MenuItem key={loanType.id || loanType.name} value={loanType.name}>
+                      {loanType.name} ({loanType.interestRate}% )
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -800,12 +1049,22 @@ const resetFilters = () => {
 
             <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
+                select
                 label="Branch"
                 value={editingLoan?.branch || ""}
                 onChange={(e) => setEditingLoan((s) => ({ ...s, branch: e.target.value }))}
                 fullWidth
                 margin="normal"
-              />
+              >
+                <MenuItem value="">
+                  <em>Select branch</em>
+                </MenuItem>
+                {branchOptions.map((branchName) => (
+                  <MenuItem key={branchName} value={branchName}>
+                    {branchName}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Grid>
           </Grid>
         </DialogContent>

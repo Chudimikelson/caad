@@ -111,17 +111,13 @@ const Dashboard = () => {
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
-      <Typography variant="h4" sx={{ mb: 2 }}>
-        Dashboard
-      </Typography>
-
       <Grid container spacing={2}>
         {stats.map((item) => (
           <Grid key={item.label} size={{ xs: 12, sm: 6, xl: 4 }}>
             <Paper
               sx={{
                 p: 2.25,
-                borderRadius: 3,
+                borderRadius: 0.75,
                 border: "1px solid #e2e8f0",
                 boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
                 minHeight: 112,
@@ -167,7 +163,7 @@ const Dashboard = () => {
           <Paper
             sx={{
               p: 2.5,
-              borderRadius: 3,
+              borderRadius: 0.75,
               border: "1px solid #e2e8f0",
               boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
             }}
@@ -232,7 +228,7 @@ const Dashboard = () => {
           <Paper
             sx={{
               p: 2.5,
-              borderRadius: 3,
+              borderRadius: 0.75,
               border: "1px solid #e2e8f0",
               boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
               height: "100%",

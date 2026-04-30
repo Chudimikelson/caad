@@ -16,17 +16,28 @@ import {
   InputLabel,
   Snackbar,
   Alert,
+  Button,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
 } from "@mui/material";
 import { DataContext } from "../DataContext";
-import { fetchUsers, updateUserRole } from "../api";
+import { fetchUsers, updateUserRole, resetUserPassword, setUserSuspended } from "../api";
 
 const ROLES = ["Super Admin", "Credit Admin", "Relationship Manager", "Supervisor"];
 
 const UserManagement = () => {
   const { user } = useContext(DataContext);
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
+  const [passwordDialog, setPasswordDialog] = useState({ open: false, userId: "", userName: "" });
+  const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -53,15 +64,54 @@ const UserManagement = () => {
     }
   };
 
+  const handleSuspendToggle = async (target) => {
+    if (target.email === user?.email) return;
+    setSaving(true);
+    try {
+      const updated = await setUserSuspended(target._id, !target.isSuspended);
+      setUsers((prev) => prev.map((u) => (u._id === target._id ? updated : u)));
+      setSnackbar({ open: true, message: "User status updated", severity: "success" });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || "Failed to update status", severity: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openResetDialog = (target) => {
+    setPasswordDialog({ open: true, userId: target._id, userName: target.name });
+    setNewPassword("");
+  };
+
+  const handleResetPassword = async () => {
+    if (newPassword.trim().length < 6) {
+      setSnackbar({ open: true, message: "Password must be at least 6 characters", severity: "warning" });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await resetUserPassword(passwordDialog.userId, newPassword.trim());
+      setSnackbar({ open: true, message: "Password reset successfully", severity: "success" });
+      setPasswordDialog({ open: false, userId: "", userName: "" });
+      setNewPassword("");
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || "Failed to reset password", severity: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
       <Typography variant="h5" fontWeight={700} mb={3} color="#1e3a8a">
         User Management
       </Typography>
+
       {loading ? (
         <CircularProgress />
       ) : (
-        <Paper sx={{ borderRadius: 3, boxShadow: 2, p: 2 }}>
+        <Paper sx={{ borderRadius: 0.5, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)", p: 2.5, border: "1px solid #e2e8f0" }}>
           <TableContainer>
             <Table>
               <TableHead>
@@ -69,7 +119,9 @@ const UserManagement = () => {
                   <TableCell>Name</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Role</TableCell>
+                  <TableCell>Status</TableCell>
                   <TableCell>Created</TableCell>
+                  <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -84,7 +136,7 @@ const UserManagement = () => {
                           value={u.role}
                           label="Role"
                           onChange={(e) => handleRoleChange(u._id, e.target.value)}
-                          disabled={u.email === user?.email}
+                          disabled={u.email === user?.email || u.isSuspended}
                         >
                           {ROLES.map((role) => (
                             <MenuItem key={role} value={role}>
@@ -94,7 +146,32 @@ const UserManagement = () => {
                         </Select>
                       </FormControl>
                     </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={u.isSuspended ? "Suspended" : "Active"}
+                        sx={{
+                          bgcolor: u.isSuspended ? "#fee2e2" : "#dcfce7",
+                          color: u.isSuspended ? "#991b1b" : "#166534",
+                          fontWeight: 700,
+                        }}
+                      />
+                    </TableCell>
                     <TableCell>{new Date(u.createdAt).toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Button size="small" variant="outlined" sx={{ mr: 1 }} onClick={() => openResetDialog(u)}>
+                        Reset Password
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color={u.isSuspended ? "success" : "error"}
+                        disabled={u.email === user?.email || saving}
+                        onClick={() => handleSuspendToggle(u)}
+                      >
+                        {u.isSuspended ? "Unsuspend" : "Suspend"}
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -102,6 +179,24 @@ const UserManagement = () => {
           </TableContainer>
         </Paper>
       )}
+
+      <Dialog open={passwordDialog.open} onClose={() => setPasswordDialog({ open: false, userId: "", userName: "" })} maxWidth="xs" fullWidth>
+        <DialogTitle>Reset Password - {passwordDialog.userName}</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="New Password"
+            type="password"
+            sx={{ mt: 1 }}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPasswordDialog({ open: false, userId: "", userName: "" })}>Cancel</Button>
+          <Button variant="contained" onClick={handleResetPassword} disabled={saving}>Save</Button>
+        </DialogActions>
+      </Dialog>
       <Snackbar
         open={snackbar.open}
         autoHideDuration={3000}

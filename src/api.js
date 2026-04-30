@@ -59,6 +59,16 @@ export const updateUserRole = (id, role) =>
     method: "PUT",
     body: JSON.stringify({ role }),
   });
+export const resetUserPassword = (id, newPassword) =>
+  request(`/super-admin/users/${id}/reset-password`, {
+    method: "PUT",
+    body: JSON.stringify({ newPassword }),
+  });
+export const setUserSuspended = (id, isSuspended) =>
+  request(`/super-admin/users/${id}/suspend`, {
+    method: "PATCH",
+    body: JSON.stringify({ isSuspended }),
+  });
 
 // Account Officers (Super Admin)
 export const createOfficer = (name, branch) =>
@@ -76,6 +86,54 @@ export const toggleOfficerStatus = (id) =>
 
 // Get active officers for dropdown
 export const fetchActiveOfficers = () => request("/officers/active");
+
+// Loan Types
+export const fetchLoanTypes = () => request("/loan-types");
+export const fetchAllLoanTypes = () => request("/super-admin/loan-types");
+export const createLoanType = (payload) =>
+  request("/super-admin/loan-types", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+export const updateLoanType = (id, payload) =>
+  request(`/super-admin/loan-types/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+// Relationship manager reassignment
+export const fetchRelationshipManagers = () => request("/super-admin/relationship-managers");
+export const reassignCustomerManager = (payload) =>
+  request("/super-admin/customers/reassign-manager", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+// Branches
+export const fetchBranches = () => request("/super-admin/branches");
+export const createBranch = (name) =>
+  request("/super-admin/branches", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+export const updateBranch = (id, name) =>
+  request(`/super-admin/branches/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+export const assignCustomerToBranch = (payload) =>
+  request("/super-admin/customers/assign-branch", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+export const assignOfficerToBranch = (payload) =>
+  request("/super-admin/officers/assign-branch", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+// Branch catalog for authenticated users
+export const fetchAvailableBranches = () => request("/branches");
 
 export const logout = () => {
   localStorage.removeItem(TOKEN_KEY);
