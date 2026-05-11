@@ -64,6 +64,11 @@ export const resetUserPassword = (id, newPassword) =>
     method: "PUT",
     body: JSON.stringify({ newPassword }),
   });
+export const updateUserDetails = (id, payload) =>
+  request(`/super-admin/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 export const setUserSuspended = (id, isSuspended) =>
   request(`/super-admin/users/${id}/suspend`, {
     method: "PATCH",

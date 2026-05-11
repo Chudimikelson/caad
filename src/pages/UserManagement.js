@@ -25,7 +25,7 @@ import {
   TextField,
 } from "@mui/material";
 import { DataContext } from "../DataContext";
-import { fetchUsers, updateUserRole, resetUserPassword, setUserSuspended } from "../api";
+import { fetchUsers, updateUserRole, resetUserPassword, setUserSuspended, updateUserDetails } from "../api";
 
 const ROLES = ["Super Admin", "Credit Admin", "Relationship Manager", "Supervisor"];
 
@@ -37,6 +37,13 @@ const UserManagement = () => {
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [passwordDialog, setPasswordDialog] = useState({ open: false, userId: "", userName: "" });
+  const [editDialog, setEditDialog] = useState({
+    open: false,
+    userId: "",
+    name: "",
+    email: "",
+    password: "",
+  });
   const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
@@ -81,6 +88,52 @@ const UserManagement = () => {
   const openResetDialog = (target) => {
     setPasswordDialog({ open: true, userId: target._id, userName: target.name });
     setNewPassword("");
+  };
+
+  const openEditDialog = (target) => {
+    setEditDialog({
+      open: true,
+      userId: target._id,
+      name: target.name || "",
+      email: target.email || "",
+      password: "",
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    const name = editDialog.name.trim();
+    const email = editDialog.email.trim().toLowerCase();
+    const password = editDialog.password.trim();
+
+    if (!name) {
+      setSnackbar({ open: true, message: "Name is required", severity: "warning" });
+      return;
+    }
+
+    if (!email) {
+      setSnackbar({ open: true, message: "Email is required", severity: "warning" });
+      return;
+    }
+
+    if (password && password.length < 6) {
+      setSnackbar({ open: true, message: "Password must be at least 6 characters", severity: "warning" });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = { name, email };
+      if (password) payload.password = password;
+
+      const updated = await updateUserDetails(editDialog.userId, payload);
+      setUsers((prev) => prev.map((u) => (u._id === editDialog.userId ? updated : u)));
+      setSnackbar({ open: true, message: "User details updated", severity: "success" });
+      setEditDialog({ open: false, userId: "", name: "", email: "", password: "" });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || "Failed to update user", severity: "error" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleResetPassword = async () => {
@@ -159,6 +212,9 @@ const UserManagement = () => {
                     </TableCell>
                     <TableCell>{new Date(u.createdAt).toLocaleString()}</TableCell>
                     <TableCell>
+                      <Button size="small" variant="outlined" sx={{ mr: 1 }} onClick={() => openEditDialog(u)}>
+                        Edit User
+                      </Button>
                       <Button size="small" variant="outlined" sx={{ mr: 1 }} onClick={() => openResetDialog(u)}>
                         Reset Password
                       </Button>
@@ -179,6 +235,45 @@ const UserManagement = () => {
           </TableContainer>
         </Paper>
       )}
+
+      <Dialog
+        open={editDialog.open}
+        onClose={() => setEditDialog({ open: false, userId: "", name: "", email: "", password: "" })}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Edit User</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Name"
+            sx={{ mt: 1 }}
+            value={editDialog.name}
+            onChange={(e) => setEditDialog((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <TextField
+            fullWidth
+            label="Email"
+            type="email"
+            sx={{ mt: 2 }}
+            value={editDialog.email}
+            onChange={(e) => setEditDialog((prev) => ({ ...prev, email: e.target.value }))}
+          />
+          <TextField
+            fullWidth
+            label="New Password (optional)"
+            type="password"
+            sx={{ mt: 2 }}
+            value={editDialog.password}
+            onChange={(e) => setEditDialog((prev) => ({ ...prev, password: e.target.value }))}
+            helperText="Leave blank to keep the current password"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialog({ open: false, userId: "", name: "", email: "", password: "" })}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveEdit} disabled={saving}>Save</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={passwordDialog.open} onClose={() => setPasswordDialog({ open: false, userId: "", userName: "" })} maxWidth="xs" fullWidth>
         <DialogTitle>Reset Password - {passwordDialog.userName}</DialogTitle>

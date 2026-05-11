@@ -426,6 +426,62 @@ app.put("/super-admin/users/:id/reset-password", authRequired, superAdminOnly, a
   }
 });
 
+// PUT /super-admin/users/:id
+app.put("/super-admin/users/:id", authRequired, superAdminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, password } = req.body;
+
+    const target = await User.findById(id);
+    if (!target) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const nextName = typeof name === "string" ? name.trim() : "";
+    const nextEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    const nextPassword = typeof password === "string" ? password.trim() : "";
+
+    if (!nextName) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    if (!nextEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    if (password !== undefined && nextPassword.length > 0 && nextPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const existingEmail = await User.findOne({
+      email: nextEmail,
+      _id: { $ne: id },
+    }).select("_id");
+    if (existingEmail) {
+      return res.status(400).json({ error: "Email is already in use" });
+    }
+
+    target.name = nextName;
+    target.email = nextEmail;
+    if (password !== undefined && nextPassword.length > 0) {
+      target.password = nextPassword;
+    }
+
+    await target.save();
+
+    res.json({
+      _id: target._id,
+      name: target.name,
+      email: target.email,
+      role: target.role,
+      isSuspended: target.isSuspended,
+      createdAt: target.createdAt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // PATCH /super-admin/users/:id/suspend
 app.patch("/super-admin/users/:id/suspend", authRequired, superAdminOnly, async (req, res) => {
   try {
