@@ -37,7 +37,7 @@ const Sidebar = ({ isMobile = false, open = false, onClose = () => {} }) => {
   } else if (user?.role === "Super Admin") {
     menuItems = [
       { text: "User Management", icon: <PersonIcon />, path: "/user-management" },
-      { text: "Account Officer Management", icon: <PersonIcon />, path: "/account-officers" },
+      { text: "Relationship Manager Management", icon: <PersonIcon />, path: "/relationship-managers" },
       { text: "Loan Settings", icon: <AccountBalanceIcon />, path: "/loan-settings" },
       { text: "Branch Management", icon: <BarChartIcon />, path: "/branch-management" },
     ];

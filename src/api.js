@@ -75,11 +75,11 @@ export const setUserSuspended = (id, isSuspended) =>
     body: JSON.stringify({ isSuspended }),
   });
 
-// Account Officers (Super Admin)
-export const createOfficer = (name, branch) =>
+// Relationship Managers (Super Admin)
+export const createOfficer = (payload) =>
   request("/super-admin/officers", {
     method: "POST",
-    body: JSON.stringify({ name, branch }),
+    body: JSON.stringify(payload),
   });
 
 export const fetchAllOfficers = () => request("/super-admin/officers");
@@ -108,6 +108,10 @@ export const updateLoanType = (id, payload) =>
 
 // Relationship manager reassignment
 export const fetchRelationshipManagers = () => request("/super-admin/relationship-managers");
+export const syncRelationshipManagerUsers = () =>
+  request("/super-admin/relationship-managers/sync-users", {
+    method: "POST",
+  });
 export const reassignCustomerManager = (payload) =>
   request("/super-admin/customers/reassign-manager", {
     method: "PUT",

@@ -619,10 +619,10 @@ const exportToCSV = () => {
 
           <Grid size={{ xs: 12, sm: 6 }}>
             <FormControl fullWidth required>
-              <InputLabel>Account Officer</InputLabel>
+              <InputLabel>Relationship Manager</InputLabel>
               <Select
                 value={newLoan.officer}
-                label="Account Officer"
+                label="Relationship Manager"
                 onChange={(e) => setNewLoan((s) => ({ ...s, officer: e.target.value }))}
               >
                 <MenuItem value="">

@@ -22,6 +22,7 @@ import { DataContext } from "../DataContext";
 const AccountOfficerManagement = () => {
   const {
     loans,
+    repayments,
     officers,
     syncLoadAllOfficers,
     syncCreateOfficer,
@@ -30,17 +31,19 @@ const AccountOfficerManagement = () => {
     syncReassignCustomerManager,
   } = useContext(DataContext);
 
-  const [newOfficer, setNewOfficer] = useState({ name: "", branch: "" });
+  const [newOfficer, setNewOfficer] = useState({ name: "", email: "", password: "", branch: "" });
   const [relationshipManagers, setRelationshipManagers] = useState([]);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
   const [assignForm, setAssignForm] = useState({ customerName: "", fromOfficer: "", toOfficer: "" });
 
+  const normalizeManagerName = (value) => String(value || "").trim().replace(/\s*\(Officer\)$/i, "").trim();
+
   const customerOptions = useMemo(() => {
     const grouped = new Map();
     (loans || []).forEach((loan) => {
       const customerName = (loan.customerName || "").trim();
-      const officer = (loan.officer || "").trim();
+      const officer = normalizeManagerName(loan.officer);
       if (!customerName) return;
       if (!grouped.has(customerName)) grouped.set(customerName, new Set());
       if (officer) grouped.get(customerName).add(officer);
@@ -49,6 +52,53 @@ const AccountOfficerManagement = () => {
       .map(([customerName, officerSet]) => ({ customerName, officers: Array.from(officerSet) }))
       .sort((a, b) => a.customerName.localeCompare(b.customerName));
   }, [loans]);
+
+  const managerRows = useMemo(() => {
+    const byName = new Map();
+
+    (officers || []).forEach((officer) => {
+      const normalizedName = normalizeManagerName(officer?.name);
+      if (!normalizedName) return;
+      byName.set(normalizedName.toLowerCase(), {
+        id: officer.id || `legacy:${normalizedName.toLowerCase()}`,
+        userId: officer.userId || null,
+        name: normalizedName,
+        email: officer.email || "",
+        branch: officer.branch || "",
+        isActive: officer.isActive !== false,
+      });
+    });
+
+    const allNames = new Set();
+    (relationshipManagers || []).forEach((name) => {
+      const normalizedName = normalizeManagerName(name);
+      if (normalizedName) allNames.add(normalizedName);
+    });
+    (loans || []).forEach((loan) => {
+      const normalizedName = normalizeManagerName(loan.officer);
+      if (normalizedName) allNames.add(normalizedName);
+    });
+    (repayments || []).forEach((repayment) => {
+      const normalizedName = normalizeManagerName(repayment.officer);
+      if (normalizedName) allNames.add(normalizedName);
+    });
+
+    allNames.forEach((name) => {
+      const key = name.toLowerCase();
+      if (!byName.has(key)) {
+        byName.set(key, {
+          id: `legacy:${key}`,
+          userId: null,
+          name,
+          email: "",
+          branch: "",
+          isActive: true,
+        });
+      }
+    });
+
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [officers, relationshipManagers, loans, repayments]);
 
   useEffect(() => {
     const load = async () => {
@@ -64,20 +114,30 @@ const AccountOfficerManagement = () => {
   }, [syncLoadAllOfficers, syncFetchRelationshipManagers]);
 
   const handleCreateOfficer = async () => {
-    if (!newOfficer.name.trim() || !newOfficer.branch.trim()) {
-      setSnackbar({ open: true, message: "Officer name and branch are required", severity: "warning" });
+    if (!newOfficer.name.trim() || !newOfficer.email.trim() || !newOfficer.password.trim() || !newOfficer.branch.trim()) {
+      setSnackbar({ open: true, message: "Name, email, password, and branch are required", severity: "warning" });
+      return;
+    }
+
+    if (newOfficer.password.trim().length < 6) {
+      setSnackbar({ open: true, message: "Password must be at least 6 characters", severity: "warning" });
       return;
     }
     setSaving(true);
     try {
-      await syncCreateOfficer(newOfficer.name.trim(), newOfficer.branch.trim());
+      await syncCreateOfficer({
+        name: newOfficer.name.trim(),
+        email: newOfficer.email.trim(),
+        password: newOfficer.password.trim(),
+        branch: newOfficer.branch.trim(),
+      });
       await syncLoadAllOfficers();
       const managers = await syncFetchRelationshipManagers();
       setRelationshipManagers(Array.isArray(managers) ? managers : []);
-      setNewOfficer({ name: "", branch: "" });
-      setSnackbar({ open: true, message: "Account officer created", severity: "success" });
+      setNewOfficer({ name: "", email: "", password: "", branch: "" });
+      setSnackbar({ open: true, message: "Relationship manager created", severity: "success" });
     } catch (err) {
-      setSnackbar({ open: true, message: err.message || "Failed to create officer", severity: "error" });
+      setSnackbar({ open: true, message: err.message || "Failed to create relationship manager", severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -88,9 +148,9 @@ const AccountOfficerManagement = () => {
     try {
       await syncToggleOfficerStatus(id);
       await syncLoadAllOfficers();
-      setSnackbar({ open: true, message: "Officer status updated", severity: "success" });
+      setSnackbar({ open: true, message: "Relationship manager status updated", severity: "success" });
     } catch (err) {
-      setSnackbar({ open: true, message: err.message || "Failed to update officer", severity: "error" });
+      setSnackbar({ open: true, message: err.message || "Failed to update relationship manager", severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -107,13 +167,13 @@ const AccountOfficerManagement = () => {
 
   const handleAssignCustomer = async () => {
     if (!assignForm.customerName || !assignForm.toOfficer) {
-      setSnackbar({ open: true, message: "Select customer and target officer", severity: "warning" });
+      setSnackbar({ open: true, message: "Select customer and target relationship manager", severity: "warning" });
       return;
     }
     setSaving(true);
     try {
       await syncReassignCustomerManager(assignForm);
-      setSnackbar({ open: true, message: "Customer assigned to account officer", severity: "success" });
+      setSnackbar({ open: true, message: "Customer assigned to relationship manager", severity: "success" });
       setAssignForm({ customerName: "", fromOfficer: "", toOfficer: "" });
     } catch (err) {
       setSnackbar({ open: true, message: err.message || "Failed to assign customer", severity: "error" });
@@ -125,20 +185,38 @@ const AccountOfficerManagement = () => {
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
       <Typography variant="h5" fontWeight={700} mb={3} color="#1e3a8a">
-        Account Officer Management
+        Relationship Manager Management
       </Typography>
 
       <Grid container spacing={2.5}>
         <Grid size={{ xs: 12, lg: 5 }}>
           <Paper sx={{ p: 2.5, borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15,23,42,0.08)" }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Create Account Officer</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Create Relationship Manager</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
-                  label="Officer Name"
+                  label="Relationship Manager Name"
                   value={newOfficer.name}
                   onChange={(e) => setNewOfficer((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  type="email"
+                  value={newOfficer.email}
+                  onChange={(e) => setNewOfficer((prev) => ({ ...prev, email: e.target.value }))}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  label="Password"
+                  type="password"
+                  value={newOfficer.password}
+                  onChange={(e) => setNewOfficer((prev) => ({ ...prev, password: e.target.value }))}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
@@ -150,7 +228,7 @@ const AccountOfficerManagement = () => {
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
-                <Button variant="contained" onClick={handleCreateOfficer} disabled={saving}>Create Officer</Button>
+                <Button variant="contained" onClick={handleCreateOfficer} disabled={saving}>Create Relationship Manager</Button>
               </Grid>
             </Grid>
           </Paper>
@@ -158,7 +236,7 @@ const AccountOfficerManagement = () => {
 
         <Grid size={{ xs: 12, lg: 7 }}>
           <Paper sx={{ p: 2.5, borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15,23,42,0.08)" }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Assign Customer to Account Officer</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Assign Customer to Relationship Manager</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField select fullWidth label="Customer" value={assignForm.customerName} onChange={(e) => handleCustomerChange(e.target.value)}>
@@ -169,11 +247,11 @@ const AccountOfficerManagement = () => {
                 </TextField>
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField fullWidth label="Current Officer" value={assignForm.fromOfficer} InputProps={{ readOnly: true }} />
+                <TextField fullWidth label="Current Relationship Manager" value={assignForm.fromOfficer} InputProps={{ readOnly: true }} />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField select fullWidth label="Target Officer" value={assignForm.toOfficer} onChange={(e) => setAssignForm((prev) => ({ ...prev, toOfficer: e.target.value }))}>
-                  <MenuItem value="">Select account officer</MenuItem>
+                <TextField select fullWidth label="Target Relationship Manager" value={assignForm.toOfficer} onChange={(e) => setAssignForm((prev) => ({ ...prev, toOfficer: e.target.value }))}>
+                  <MenuItem value="">Select relationship manager</MenuItem>
                   {relationshipManagers.map((rm) => (
                     <MenuItem key={rm} value={rm}>{rm}</MenuItem>
                   ))}
@@ -190,28 +268,35 @@ const AccountOfficerManagement = () => {
 
         <Grid size={{ xs: 12 }}>
           <Paper sx={{ p: 2.5, borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15,23,42,0.08)" }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Account Officers</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Relationship Managers</Typography>
             <TableContainer>
               <Table>
                 <TableHead>
                   <TableRow>
                     <TableCell>Name</TableCell>
+                    <TableCell>Email</TableCell>
                     <TableCell>Branch</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Action</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(officers || []).map((officer) => (
+                  {managerRows.map((officer) => (
                     <TableRow key={officer.id}>
                       <TableCell>{officer.name}</TableCell>
+                      <TableCell>{officer.email || "-"}</TableCell>
                       <TableCell>{officer.branch}</TableCell>
                       <TableCell>
                         <Chip size="small" label={officer.isActive ? "Active" : "Inactive"} sx={{ bgcolor: officer.isActive ? "#dcfce7" : "#fee2e2", color: officer.isActive ? "#166534" : "#991b1b", fontWeight: 700 }} />
                       </TableCell>
                       <TableCell>
-                        <Button size="small" variant="outlined" onClick={() => handleToggleOfficer(officer.id)}>
-                          {officer.isActive ? "Deactivate" : "Activate"}
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleToggleOfficer(officer.id)}
+                          disabled={!officer.userId}
+                        >
+                          {!officer.userId ? "No Account" : officer.isActive ? "Deactivate" : "Activate"}
                         </Button>
                       </TableCell>
                     </TableRow>

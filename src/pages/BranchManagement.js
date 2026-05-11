@@ -129,7 +129,7 @@ const BranchManagement = () => {
     try {
       await assignOfficerToBranch(officerAssign);
       setOfficerAssign({ officerName: "", branch: "" });
-      setSnackbar({ open: true, message: "Account officer assigned to branch", severity: "success" });
+      setSnackbar({ open: true, message: "Relationship manager assigned to branch", severity: "success" });
     } catch (err) {
       setSnackbar({ open: true, message: err.message || "Failed to assign officer", severity: "error" });
     } finally {
@@ -183,10 +183,10 @@ const BranchManagement = () => {
 
         <Grid size={{ xs: 12, lg: 6 }}>
           <Paper sx={{ p: 2.5, borderRadius: 0.5, border: "1px solid #e2e8f0", boxShadow: "0 10px 24px rgba(15,23,42,0.08)" }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Assign Account Officer to Branch</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>Assign Relationship Manager to Branch</Typography>
             <Grid container spacing={1.5}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField select fullWidth label="Account Officer" value={officerAssign.officerName} onChange={(e) => setOfficerAssign((p) => ({ ...p, officerName: e.target.value }))}>
+                <TextField select fullWidth label="Relationship Manager" value={officerAssign.officerName} onChange={(e) => setOfficerAssign((p) => ({ ...p, officerName: e.target.value }))}>
                   <MenuItem value="">Select officer</MenuItem>
                   {officerNames.map((name) => <MenuItem key={name} value={name}>{name}</MenuItem>)}
                 </TextField>

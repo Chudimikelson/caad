@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -25,7 +25,7 @@ import {
   TextField,
 } from "@mui/material";
 import { DataContext } from "../DataContext";
-import { fetchUsers, updateUserRole, resetUserPassword, setUserSuspended, updateUserDetails } from "../api";
+import { fetchUsers, updateUserRole, resetUserPassword, setUserSuspended, updateUserDetails, syncRelationshipManagerUsers } from "../api";
 
 const ROLES = ["Super Admin", "Credit Admin", "Relationship Manager", "Supervisor"];
 
@@ -46,20 +46,38 @@ const UserManagement = () => {
   });
   const [newPassword, setNewPassword] = useState("");
 
-  useEffect(() => {
-    const loadUsers = async () => {
-      setLoading(true);
-      try {
-        const data = await fetchUsers();
-        setUsers(Array.isArray(data) ? data : []);
-      } catch (err) {
-        setSnackbar({ open: true, message: err.message || "Failed to load users", severity: "error" });
-        setUsers([]);
-      }
-      setLoading(false);
-    };
-    loadUsers();
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchUsers();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || "Failed to load users", severity: "error" });
+      setUsers([]);
+    }
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleSyncRelationshipManagers = async () => {
+    setSaving(true);
+    try {
+      const result = await syncRelationshipManagerUsers();
+      await loadUsers();
+      setSnackbar({
+        open: true,
+        message: `Sync complete: ${result.createdCount || 0} created, ${result.skippedCount || 0} skipped`,
+        severity: "success",
+      });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || "Failed to sync relationship managers", severity: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleRoleChange = async (id, newRole) => {
     try {
@@ -157,9 +175,14 @@ const UserManagement = () => {
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
-      <Typography variant="h5" fontWeight={700} mb={3} color="#1e3a8a">
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, mb: 3 }}>
+      <Typography variant="h5" fontWeight={700} color="#1e3a8a">
         User Management
       </Typography>
+      <Button variant="contained" onClick={handleSyncRelationshipManagers} disabled={saving || loading}>
+        Sync Missing Relationship Managers
+      </Button>
+      </Box>
 
       {loading ? (
         <CircularProgress />

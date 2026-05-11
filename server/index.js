@@ -263,7 +263,7 @@ const superAdminOnly = (req, res, next) => {
 
 const normalizeManagerName = (value) => {
   if (typeof value !== "string") return "";
-  return value.trim();
+  return value.trim().replace(/\s*\(Officer\)$/i, "").trim();
 };
 
 const resolveRelationshipManagerNames = async (userId) => {
@@ -512,25 +512,39 @@ app.patch("/super-admin/users/:id/suspend", authRequired, superAdminOnly, async 
   }
 });
 
-/* ==================== Account Officer Routes (Super Admin Only) ==================== */
+/* ==================== Relationship Manager Routes (Super Admin Only) ==================== */
 
-// POST /super-admin/officers - Create account officer
+// POST /super-admin/officers - Create relationship manager
 app.post("/super-admin/officers", authRequired, superAdminOnly, async (req, res) => {
   try {
-    const { name, branch } = req.body;
+    const { name, branch, email, password } = req.body;
 
-    if (!name || !branch) {
-      return res.status(400).json({ error: "Name and branch are required" });
+    const normalizedName = String(name || "").trim();
+    const normalizedBranch = String(branch || "").trim();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedPassword = String(password || "").trim();
+
+    if (!normalizedName || !normalizedBranch || !normalizedEmail || !normalizedPassword) {
+      return res.status(400).json({ error: "Name, branch, email, and password are required" });
+    }
+
+    if (normalizedPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const emailExists = await User.findOne({ email: normalizedEmail }).select("_id");
+    if (emailExists) {
+      return res.status(409).json({ error: "Email is already in use" });
     }
 
     const officer = new User({
-      name: `${name} (Officer)`,
-      email: `officer.${Date.now()}@caad.internal`,
-      password: "tempPassword123",
+      name: normalizedName,
+      email: normalizedEmail,
+      password: normalizedPassword,
       role: "Relationship Manager",
       accountOfficer: {
-        name,
-        branch,
+        name: normalizedName,
+        branch: normalizedBranch,
         isActive: true,
       },
     });
@@ -539,7 +553,7 @@ app.post("/super-admin/officers", authRequired, superAdminOnly, async (req, res)
 
     res.status(201).json({
       id: officer._id,
-      name: officer.accountOfficer.name,
+      name: officer.name,
       branch: officer.accountOfficer.branch,
       isActive: officer.accountOfficer.isActive,
     });
@@ -548,21 +562,53 @@ app.post("/super-admin/officers", authRequired, superAdminOnly, async (req, res)
   }
 });
 
-// GET /super-admin/officers - Get all account officers
+// GET /super-admin/officers - Get all relationship managers
 app.get("/super-admin/officers", authRequired, superAdminOnly, async (req, res) => {
   try {
-    const officers = await User.find(
-      { "accountOfficer.name": { $exists: true, $ne: null } },
-      "_id accountOfficer createdAt"
-    ).sort({ createdAt: -1 });
+    const [officers, loanManagers, repaymentManagers] = await Promise.all([
+      User.find({ role: "Relationship Manager" }, "_id name email accountOfficer isSuspended createdAt"),
+      Loan.distinct("officer", { officer: { $exists: true, $nin: [null, ""] } }),
+      Repayment.distinct("officer", { officer: { $exists: true, $nin: [null, ""] } }),
+    ]);
 
-    const result = officers.map(o => ({
-      id: o._id,
-      name: o.accountOfficer.name,
-      branch: o.accountOfficer.branch,
-      isActive: o.accountOfficer.isActive,
-      createdAt: o.createdAt,
-    }));
+    const map = new Map();
+
+    officers.forEach((o) => {
+      const key = normalizeManagerName(o.name);
+      if (!key) return;
+
+      map.set(key.toLowerCase(), {
+        id: o._id.toString(),
+        userId: o._id.toString(),
+        name: key,
+        email: o.email,
+        branch: o.accountOfficer?.branch || "",
+        isActive: o.accountOfficer?.isActive !== false && !o.isSuspended,
+        hasAccount: true,
+        createdAt: o.createdAt,
+      });
+    });
+
+    [...loanManagers, ...repaymentManagers]
+      .map((name) => normalizeManagerName(name))
+      .filter(Boolean)
+      .forEach((name) => {
+        const key = name.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: `legacy:${key}`,
+            userId: null,
+            name,
+            email: "",
+            branch: "",
+            isActive: true,
+            hasAccount: false,
+            createdAt: null,
+          });
+        }
+      });
+
+    const result = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     res.json(result);
   } catch (err) {
@@ -570,7 +616,7 @@ app.get("/super-admin/officers", authRequired, superAdminOnly, async (req, res) 
   }
 });
 
-// PATCH /super-admin/officers/:id/toggle - Toggle officer active status
+// PATCH /super-admin/officers/:id/toggle - Toggle relationship manager active status
 app.patch("/super-admin/officers/:id/toggle", authRequired, superAdminOnly, async (req, res) => {
   try {
     const { id } = req.params;
@@ -581,35 +627,50 @@ app.patch("/super-admin/officers/:id/toggle", authRequired, superAdminOnly, asyn
 
     const officer = await User.findById(id);
 
-    if (!officer || !officer.accountOfficer || !officer.accountOfficer.name) {
-      return res.status(404).json({ error: "Officer not found" });
+    if (!officer || officer.role !== "Relationship Manager") {
+      return res.status(404).json({ error: "Relationship manager not found" });
     }
 
+    if (!officer.accountOfficer) {
+      officer.accountOfficer = {
+        name: officer.name,
+        branch: "",
+        isActive: true,
+      };
+    }
     officer.accountOfficer.isActive = !officer.accountOfficer.isActive;
     await officer.save();
 
     res.json({
       id: officer._id,
-      name: officer.accountOfficer.name,
+      name: officer.name,
+      email: officer.email,
       branch: officer.accountOfficer.branch,
-      isActive: officer.accountOfficer.isActive,
+      isActive: officer.accountOfficer.isActive && !officer.isSuspended,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /officers/active - Get active officers only (for dropdowns)
+// GET /officers/active - Get active relationship managers only (for dropdowns)
 app.get("/officers/active", authRequired, async (req, res) => {
   try {
     const officers = await User.find(
-      { "accountOfficer.name": { $exists: true, $ne: null }, "accountOfficer.isActive": true },
-      "accountOfficer.name accountOfficer.branch"
-    ).sort({ "accountOfficer.name": 1 });
+      {
+        role: "Relationship Manager",
+        isSuspended: { $ne: true },
+        $or: [
+          { "accountOfficer.isActive": { $exists: false } },
+          { "accountOfficer.isActive": true },
+        ],
+      },
+      "name"
+    ).sort({ name: 1 });
 
     const result = officers.map(o => ({
       id: o._id,
-      name: o.accountOfficer.name,
+      name: o.name,
     }));
 
     res.json(result);
@@ -739,20 +800,123 @@ app.put("/super-admin/loan-types/:id", authRequired, superAdminOnly, async (req,
 // GET /super-admin/relationship-managers - names for reassignment
 app.get("/super-admin/relationship-managers", authRequired, superAdminOnly, async (req, res) => {
   try {
-    const rmUsers = await User.find({ role: "Relationship Manager" }, "name").sort({ name: 1 });
-    const officerUsers = await User.find(
-      { "accountOfficer.name": { $exists: true, $ne: null }, "accountOfficer.isActive": true },
-      "accountOfficer.name"
-    ).sort({ "accountOfficer.name": 1 });
+    const [rmUsers, loanManagers, repaymentManagers] = await Promise.all([
+      User.find(
+      {
+        role: "Relationship Manager",
+        isSuspended: { $ne: true },
+        $or: [
+          { "accountOfficer.isActive": { $exists: false } },
+          { "accountOfficer.isActive": true },
+        ],
+      },
+      "name"
+      ).sort({ name: 1 }),
+      Loan.distinct("officer", { officer: { $exists: true, $nin: [null, ""] } }),
+      Repayment.distinct("officer", { officer: { $exists: true, $nin: [null, ""] } }),
+    ]);
 
     const names = Array.from(
       new Set([
-        ...rmUsers.map((u) => (u.name || "").trim()).filter(Boolean),
-        ...officerUsers.map((u) => (u.accountOfficer?.name || "").trim()).filter(Boolean),
+        ...rmUsers.map((u) => normalizeManagerName(u.name)).filter(Boolean),
+        ...loanManagers.map((name) => normalizeManagerName(name)).filter(Boolean),
+        ...repaymentManagers.map((name) => normalizeManagerName(name)).filter(Boolean),
       ])
     ).sort((a, b) => a.localeCompare(b));
 
     res.json(names);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /super-admin/relationship-managers/sync-users
+app.post("/super-admin/relationship-managers/sync-users", authRequired, superAdminOnly, async (req, res) => {
+  try {
+    const [loanManagers, repaymentManagers, existingUsers] = await Promise.all([
+      Loan.distinct("officer", { officer: { $exists: true, $nin: [null, ""] } }),
+      Repayment.distinct("officer", { officer: { $exists: true, $nin: [null, ""] } }),
+      User.find({}, "name email role accountOfficer.name"),
+    ]);
+
+    const managerNames = Array.from(
+      new Set(
+        [...loanManagers, ...repaymentManagers]
+          .map((name) => normalizeManagerName(name))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    const existingManagerNames = new Set(
+      existingUsers
+        .filter((u) => u.role === "Relationship Manager")
+        .flatMap((u) => [normalizeManagerName(u.name), normalizeManagerName(u.accountOfficer?.name)])
+        .filter(Boolean)
+        .map((name) => name.toLowerCase())
+    );
+
+    const usedEmails = new Set(
+      existingUsers
+        .map((u) => String(u.email || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    const slugify = (value) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ".")
+        .replace(/^\.+|\.+$/g, "") || "rm";
+
+    const created = [];
+    const skipped = [];
+    const defaultPassword = process.env.DEFAULT_RELATIONSHIP_MANAGER_PASSWORD || "TempPass123!";
+
+    for (const managerName of managerNames) {
+      const key = managerName.toLowerCase();
+      if (existingManagerNames.has(key)) {
+        skipped.push(managerName);
+        continue;
+      }
+
+      const base = `rm.${slugify(managerName)}`;
+      let candidate = `${base}@caad.internal`;
+      let n = 1;
+      while (usedEmails.has(candidate)) {
+        candidate = `${base}.${n}@caad.internal`;
+        n += 1;
+      }
+
+      const user = new User({
+        name: managerName,
+        email: candidate,
+        password: defaultPassword,
+        role: "Relationship Manager",
+        accountOfficer: {
+          name: managerName,
+          branch: "",
+          isActive: true,
+        },
+        isSuspended: false,
+      });
+
+      await user.save();
+      usedEmails.add(candidate);
+      existingManagerNames.add(key);
+
+      created.push({
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+      });
+    }
+
+    res.json({
+      message: "Relationship manager user sync complete",
+      createdCount: created.length,
+      skippedCount: skipped.length,
+      created,
+      skipped,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -766,17 +930,24 @@ app.put("/super-admin/customers/reassign-manager", authRequired, superAdminOnly,
       return res.status(400).json({ error: "customerName and toOfficer are required" });
     }
 
+    const normalizedFromOfficer = normalizeManagerName(fromOfficer);
+    const normalizedToOfficer = normalizeManagerName(toOfficer);
+
     const loanFilter = { customerName: String(customerName).trim() };
     const repaymentFilter = { customerName: String(customerName).trim() };
 
-    if (fromOfficer) {
-      loanFilter.officer = fromOfficer;
-      repaymentFilter.officer = fromOfficer;
+    if (normalizedFromOfficer) {
+      loanFilter.officer = {
+        $in: [normalizedFromOfficer, `${normalizedFromOfficer} (Officer)`],
+      };
+      repaymentFilter.officer = {
+        $in: [normalizedFromOfficer, `${normalizedFromOfficer} (Officer)`],
+      };
     }
 
     const [loanResult, repaymentResult] = await Promise.all([
-      Loan.updateMany(loanFilter, { $set: { officer: toOfficer } }),
-      Repayment.updateMany(repaymentFilter, { $set: { officer: toOfficer } }),
+      Loan.updateMany(loanFilter, { $set: { officer: normalizedToOfficer } }),
+      Repayment.updateMany(repaymentFilter, { $set: { officer: normalizedToOfficer } }),
     ]);
 
     res.json({
@@ -1003,20 +1174,41 @@ app.put("/super-admin/officers/assign-branch", authRequired, superAdminOnly, asy
       return res.status(400).json({ error: "officerName and branch are required" });
     }
 
-    const officer = await User.findOne({ "accountOfficer.name": officerName });
+    const normalizedOfficerName = normalizeManagerName(officerName);
+    const officers = await User.find({ role: "Relationship Manager" }, "name accountOfficer");
+    const officer = officers.find(
+      (candidate) =>
+        normalizeManagerName(candidate.name) === normalizedOfficerName ||
+        normalizeManagerName(candidate.accountOfficer?.name) === normalizedOfficerName
+    );
+
     if (!officer) {
-      return res.status(404).json({ error: "Officer not found" });
+      return res.status(404).json({ error: "Relationship manager not found" });
     }
 
+    if (!officer.accountOfficer) {
+      officer.accountOfficer = { name: officer.name, branch: "", isActive: true };
+    }
+
+    officer.accountOfficer.name = officer.name;
     officer.accountOfficer.branch = branch;
     await officer.save();
 
+    const legacyName = `${normalizedOfficerName} (Officer)`;
+    const officerNames = Array.from(
+      new Set(
+        [officerName, normalizedOfficerName, officer.name, legacyName]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+      )
+    );
+
     await Promise.all([
-      Loan.updateMany({ officer: officerName }, { $set: { branch } }),
-      Repayment.updateMany({ officer: officerName }, { $set: { branch } }),
+      Loan.updateMany({ officer: { $in: officerNames } }, { $set: { branch } }),
+      Repayment.updateMany({ officer: { $in: officerNames } }, { $set: { branch } }),
     ]);
 
-    res.json({ message: "Officer branch assigned" });
+    res.json({ message: "Relationship manager branch assigned" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

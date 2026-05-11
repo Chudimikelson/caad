@@ -1,5 +1,6 @@
 import React, { useContext, useMemo, useState, useCallback } from "react";
 import { DataContext } from "../DataContext";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Grid,
@@ -27,6 +28,9 @@ import LoanCard from "../components/LoanCard";
 const fmtCurrency = (val) =>
   new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(Number(val || 0));
 
+const normalizeManagerName = (value) =>
+  String(value || "").trim().replace(/\s*\(Officer\)$/i, "").trim();
+
 const addMonthsPreservingDay = (baseDate, monthsToAdd) => {
   const source = new Date(baseDate);
   const target = new Date(source);
@@ -42,33 +46,20 @@ const addMonthsPreservingDay = (baseDate, monthsToAdd) => {
 
 const Loans = () => {
   const { loans, repayments, user } = useContext(DataContext);
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const isRelationshipManager = user?.role === "Relationship Manager";
   const managerNames = useMemo(() => {
-    if (!isRelationshipManager) return [];
-
-    const names = new Set();
-    const addVariant = (value) => {
-      if (typeof value !== "string") return;
-      const normalized = value.trim();
-      if (!normalized) return;
-      names.add(normalized);
-
-      const withoutOfficerSuffix = normalized.replace(/\s*\(Officer\)$/i, "").trim();
-      if (withoutOfficerSuffix) names.add(withoutOfficerSuffix);
-    };
-
-    addVariant(user?.name);
-    addVariant(user?.accountOfficer?.name);
-    return Array.from(names);
+    if (!isRelationshipManager) return "";
+    return normalizeManagerName(user?.name || user?.accountOfficer?.name);
   }, [isRelationshipManager, user]);
 
   const scopedLoans = useMemo(() => {
     if (!isRelationshipManager) return loans;
-    if (!managerNames.length) return [];
+    if (!managerNames) return [];
 
-    return loans.filter((loan) => managerNames.includes(String(loan.officer || "").trim()));
+    return loans.filter((loan) => normalizeManagerName(loan.officer) === managerNames);
   }, [isRelationshipManager, loans, managerNames]);
 
   const [filters, setFilters] = useState({
@@ -231,6 +222,12 @@ const Loans = () => {
       status: "",
       customerSearch: "",
     });
+  };
+
+  const handleCustomerClick = (customerName) => {
+    const name = String(customerName || "").trim();
+    if (!name) return;
+    navigate(`/customers/${encodeURIComponent(name)}`);
   };
 
   const exportToCSV = () => {
@@ -512,6 +509,7 @@ const Loans = () => {
                 loanCycle={getLoanCycle(loanCycleMap, loan)}
                 formatCurrency={fmtCurrency}
                 getLoanLifecycleStatus={getLoanLifecycleStatus}
+                onCustomerClick={handleCustomerClick}
               />
             ))
           )}
@@ -578,7 +576,22 @@ const Loans = () => {
                         >
                           {getLoanCycle(loanCycleMap, loan)}
                         </Box>
-                        <span>{loan.customerName}</span>
+                        <Box
+                          component="button"
+                          type="button"
+                          onClick={() => handleCustomerClick(loan.customerName)}
+                          sx={{
+                            border: "none",
+                            p: 0,
+                            bgcolor: "transparent",
+                            color: "inherit",
+                            textDecoration: "none",
+                            cursor: "pointer",
+                            font: "inherit",
+                          }}
+                        >
+                          {loan.customerName}
+                        </Box>
                       </Box>
                     </TableCell>
                     <TableCell>{fmtCurrency(loan.amount)}</TableCell>

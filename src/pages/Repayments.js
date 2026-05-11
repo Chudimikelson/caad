@@ -26,6 +26,9 @@ import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { buildLoanCycleMap, getLoanCycle } from "../utils/loanCycle";
 import RepaymentCard from "../components/RepaymentCard";
 
+const normalizeManagerName = (value) =>
+  String(value || "").trim().replace(/\s*\(Officer\)$/i, "").trim();
+
 const formatNaira = (value) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
@@ -39,41 +42,26 @@ const Repayments = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const isRelationshipManager = user?.role === "Relationship Manager";
   const managerNames = useMemo(() => {
-    if (!isRelationshipManager) return [];
-
-    const names = new Set();
-    const addVariant = (value) => {
-      if (typeof value !== "string") return;
-      const normalized = value.trim();
-      if (!normalized) return;
-      names.add(normalized);
-
-      const withoutOfficerSuffix = normalized.replace(/\s*\(Officer\)$/i, "").trim();
-      if (withoutOfficerSuffix) names.add(withoutOfficerSuffix);
-    };
-
-    addVariant(user?.name);
-    addVariant(user?.accountOfficer?.name);
-
-    return Array.from(names);
+    if (!isRelationshipManager) return "";
+    return normalizeManagerName(user?.name || user?.accountOfficer?.name);
   }, [isRelationshipManager, user]);
 
   const scopedLoans = useMemo(() => {
     if (!isRelationshipManager) return loans;
-    if (!managerNames.length) return [];
+    if (!managerNames) return [];
 
-    return loans.filter((loan) => managerNames.includes(String(loan.officer || "").trim()));
+    return loans.filter((loan) => normalizeManagerName(loan.officer) === managerNames);
   }, [isRelationshipManager, loans, managerNames]);
 
   const scopedLoanIds = useMemo(() => new Set(scopedLoans.map((loan) => loan.id)), [scopedLoans]);
 
   const scopedRepayments = useMemo(() => {
     if (!isRelationshipManager) return repayments;
-    if (!managerNames.length) return [];
+    if (!managerNames) return [];
 
     return repayments.filter((repayment) => {
-      const repaymentOfficer = String(repayment.officer || "").trim();
-      if (managerNames.includes(repaymentOfficer)) return true;
+      const repaymentOfficer = normalizeManagerName(repayment.officer);
+      if (managerNames === repaymentOfficer) return true;
       return scopedLoanIds.has(repayment.loanId);
     });
   }, [isRelationshipManager, managerNames, repayments, scopedLoanIds]);

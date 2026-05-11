@@ -1,10 +1,10 @@
 import React from "react";
-import { Box, Paper, Typography, Chip, useTheme } from "@mui/material";
+import { Box, Paper, Typography, Chip, ButtonBase, useTheme } from "@mui/material";
 
 /**
  * Mobile-friendly card component for displaying loan information
  */
-export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStatus }) => {
+export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStatus, onCustomerClick }) => {
   const theme = useTheme();
   const dark = theme.palette.mode === "dark";
   const lifecycleStatus = getLoanLifecycleStatus(loan);
@@ -38,16 +38,28 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
       {/* Header: Customer Name and Status */}
       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5, gap: 1 }}>
         <Box>
-          <Typography
-            variant="subtitle2"
+          <ButtonBase
+            onClick={() => onCustomerClick?.(loan.customerName)}
             sx={{
-              fontWeight: 700,
-              color: dark ? "#f0f9ff" : "#0f172a",
-              mb: 0.25,
+              display: "inline-flex",
+              justifyContent: "flex-start",
+              textAlign: "left",
+              borderRadius: 0.5,
+              px: 0.2,
+              mx: -0.2,
             }}
           >
-            {loan.customerName}
-          </Typography>
+            <Typography
+              variant="subtitle2"
+              sx={{
+                fontWeight: 700,
+                color: dark ? "#f0f9ff" : "#0f172a",
+                mb: 0.25,
+              }}
+            >
+              {loan.customerName}
+            </Typography>
+          </ButtonBase>
           <Typography
             variant="caption"
             sx={{

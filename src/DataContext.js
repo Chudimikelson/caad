@@ -375,7 +375,7 @@ export const DataProvider = ({ children }) => {
     [serverAvailable]
   );
 
-  /* -------------------- Account Officer helpers -------------------- */
+  /* -------------------- Relationship Manager helpers -------------------- */
 
   const syncLoadAllOfficers = useCallback(async () => {
     try {
@@ -402,9 +402,9 @@ export const DataProvider = ({ children }) => {
   }, []);
 
   const syncCreateOfficer = useCallback(
-    async (name, branch) => {
+    async (payload) => {
       try {
-        const newOfficer = await api.createOfficer(name, branch);
+        const newOfficer = await api.createOfficer(payload);
         setOfficers((prev) => [...prev, newOfficer]);
         // Reload active officers list
         await syncLoadActiveOfficers();
@@ -531,7 +531,7 @@ export const DataProvider = ({ children }) => {
         syncDeleteRepayment,
         syncReplaceUnpaidRepayments,
 
-        // Account Officers
+        // Relationship Managers
         officers,
         activeOfficers,
         syncLoadAllOfficers,

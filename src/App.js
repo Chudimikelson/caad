@@ -17,6 +17,7 @@ import AccountOfficerManagement from "./pages/AccountOfficerManagement";
 import LoanSettings from "./pages/LoanSettings";
 import BranchManagement from "./pages/BranchManagement";
 import StaffProfile from "./pages/StaffProfile";
+import CustomerDetails from "./pages/CustomerDetails";
 import { Box, CircularProgress } from "@mui/material";
 
 // ProtectedRoute component that checks authentication
@@ -138,7 +139,7 @@ function App() {
           }
         />
         <Route
-          path="/account-officers"
+          path="/relationship-managers"
           element={
             <ProtectedRoute requiredRole="Super Admin">
               <Layout>
@@ -147,6 +148,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/account-officers" element={<Navigate to="/relationship-managers" replace />} />
         <Route
           path="/loan-settings"
           element={
@@ -183,6 +185,16 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Repayments />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customers/:customerName"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <CustomerDetails />
               </Layout>
             </ProtectedRoute>
           }
