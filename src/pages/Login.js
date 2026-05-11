@@ -219,16 +219,6 @@ const Login = () => {
                 "Login"
               )}
             </Button>
-
-            <Button
-              fullWidth
-              variant="outlined"
-              disabled={authLoading}
-              onClick={() => navigate("/register")}
-              sx={{ py: 1.2, fontWeight: 700 }}
-            >
-              Create New Account
-            </Button>
           </Box>
 
           <Typography variant="caption" sx={{ color: "#94a3b8", textAlign: "center", mt: 3, display: "block" }}>
