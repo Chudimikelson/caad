@@ -1571,3 +1571,15 @@ app.put("/loans/:id/replace-unpaid-repayments", authRequired, async (req, res) =
   }
 });
 
+/* ==================== Serve React Frontend ==================== */
+
+const path = require("path");
+
+// Serve static files from the build directory
+app.use(express.static(path.join(__dirname, "../build")));
+
+// Handle SPA routing: redirect all unmatched routes to index.html
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../build", "index.html"));
+});
+
