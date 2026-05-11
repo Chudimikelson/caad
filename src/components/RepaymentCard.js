@@ -4,7 +4,7 @@ import { Box, Paper, Typography, Chip, useTheme } from "@mui/material";
 /**
  * Mobile-friendly card component for displaying repayment information
  */
-export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
+export const RepaymentCard = ({ repayment, loan, formatCurrency, compact = false }) => {
   const theme = useTheme();
   const dark = theme.palette.mode === "dark";
 
@@ -24,8 +24,8 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
   return (
     <Paper
       sx={{
-        p: 2,
-        mb: 1.5,
+        p: compact ? 1.5 : 2,
+        mb: compact ? 1 : 1.5,
         borderRadius: 1.5,
         border: dark ? "1px solid rgba(255,255,255,0.12)" : "1px solid #e2e8f0",
         backgroundColor: dark ? "#1a2847" : "#ffffff",
@@ -35,14 +35,14 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
       }}
     >
       {/* Header: Loan Info and Status */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5, gap: 1 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: compact ? 1 : 1.5, gap: compact ? 0.75 : 1 }}>
         <Box>
           <Typography
-            variant="subtitle2"
+            variant={compact ? "body2" : "subtitle2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
-              mb: 0.25,
+              mb: compact ? 0.1 : 0.25,
             }}
           >
             {loan?.customerName || "Unknown Customer"}
@@ -64,14 +64,14 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
             bgcolor: statusInfo.bgcolor,
             color: statusInfo.color,
             fontWeight: 600,
-            fontSize: "0.7rem",
-            height: 24,
+            fontSize: compact ? "0.65rem" : "0.7rem",
+            height: compact ? 22 : 24,
           }}
         />
       </Box>
 
       {/* Amount and Due Date */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, mb: 1.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 1 : 1.5, mb: compact ? 1 : 1.5 }}>
         <Box>
           <Typography
             variant="caption"
@@ -85,7 +85,7 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
             Repayment Amount
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -107,7 +107,7 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
             Due Date
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -119,7 +119,7 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
       </Box>
 
       {/* Payment Date and Loan Type */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, mb: 1.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 1 : 1.5, mb: compact ? 1 : 1.5 }}>
         <Box>
           <Typography
             variant="caption"
@@ -133,7 +133,7 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
             Payment Date
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -167,7 +167,7 @@ export const RepaymentCard = ({ repayment, loan, formatCurrency }) => {
       </Box>
 
       {/* Officer and Branch */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 1 : 1.5 }}>
         <Box>
           <Typography
             variant="caption"

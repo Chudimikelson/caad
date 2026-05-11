@@ -18,6 +18,8 @@ import {
   DialogContent,
   DialogActions,
   Divider,
+  useTheme,
+  useMediaQuery,
 } from "@mui/material";
 import PrintIcon from "@mui/icons-material/Print";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
@@ -26,6 +28,8 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { DataContext } from "../DataContext";
+import LoanCard from "../components/LoanCard";
+import RepaymentCard from "../components/RepaymentCard";
 
 const formatCurrency = (value) =>
   new Intl.NumberFormat("en-NG", {
@@ -50,6 +54,9 @@ const addMonthsPreservingDay = (baseDate, monthsToAdd) => {
 };
 
 const CustomerDetails = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const isVerySmallMobile = useMediaQuery("(max-width:400px)");
   const navigate = useNavigate();
   const { customerName: encodedCustomerName } = useParams();
   const { loans, repayments } = useContext(DataContext);
@@ -67,6 +74,13 @@ const CustomerDetails = () => {
   );
 
   const loanIds = useMemo(() => new Set(customerLoans.map((loan) => loan.id)), [customerLoans]);
+  const loanById = useMemo(() => {
+    const map = new Map();
+    customerLoans.forEach((loan) => {
+      map.set(String(loan.id || ""), loan);
+    });
+    return map;
+  }, [customerLoans]);
 
   const customerRepayments = useMemo(
     () =>
@@ -400,95 +414,172 @@ const CustomerDetails = () => {
 
       <Paper sx={{ p: 2.5, mb: 2.5, borderRadius: 0.75, border: "1px solid #e2e8f0" }}>
         <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a" }}>Loans</Typography>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Loan Type</TableCell>
-                <TableCell>Amount</TableCell>
-                <TableCell>Interest Rate</TableCell>
-                <TableCell>Tenor</TableCell>
-                <TableCell>Start Date</TableCell>
-                <TableCell>Relationship Manager</TableCell>
-                <TableCell>Branch</TableCell>
-                <TableCell>Repayment Schedule</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {customerLoans.length === 0 ? (
+        {isMobile ? (
+          <Box>
+            {customerLoans.length === 0 ? (
+              <Paper
+                sx={{
+                  p: 3,
+                  textAlign: "center",
+                  borderRadius: 0.75,
+                  border: "1px solid #e2e8f0",
+                  boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+                }}
+              >
+                <Typography sx={{ color: "#64748b" }}>
+                  No loans found for this customer.
+                </Typography>
+              </Paper>
+            ) : (
+              customerLoans.map((loan) => (
+                <Box key={loan.id} sx={{ mb: 1.5 }}>
+                  <LoanCard
+                    loan={loan}
+                    loanCycle="-"
+                    formatCurrency={formatCurrency}
+                    getLoanLifecycleStatus={(item) => String(item.lifecycleStatus || "active").toLowerCase()}
+                    onCustomerClick={() => {}}
+                    compact={isVerySmallMobile}
+                  />
+                  <Box sx={{ display: "flex", justifyContent: "flex-end", mt: isVerySmallMobile ? 0 : -0.5 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => handleViewSchedule(loan)}
+                      disabled={!customerRepayments.some((repayment) => String(repayment.loanId || "") === String(loan.id || ""))}
+                    >
+                      View Schedule
+                    </Button>
+                  </Box>
+                </Box>
+              ))
+            )}
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={8} sx={{ textAlign: "center", py: 3, color: "#64748b" }}>
-                    No loans found for this customer.
-                  </TableCell>
+                  <TableCell>Loan Type</TableCell>
+                  <TableCell>Amount</TableCell>
+                  <TableCell>Interest Rate</TableCell>
+                  <TableCell>Tenor</TableCell>
+                  <TableCell>Start Date</TableCell>
+                  <TableCell>Relationship Manager</TableCell>
+                  <TableCell>Branch</TableCell>
+                  <TableCell>Repayment Schedule</TableCell>
                 </TableRow>
-              ) : (
-                customerLoans.map((loan) => (
-                  <TableRow key={loan.id}>
-                    <TableCell>{loan.loanType || "-"}</TableCell>
-                    <TableCell>{formatCurrency(loan.amount)}</TableCell>
-                    <TableCell>{loan.interestRate || "-"}%</TableCell>
-                    <TableCell>{loan.tenor || "-"}</TableCell>
-                    <TableCell>{loan.startDate ? new Date(loan.startDate).toLocaleDateString() : "-"}</TableCell>
-                    <TableCell>{loan.officer || "-"}</TableCell>
-                    <TableCell>{loan.branch || "-"}</TableCell>
-                    <TableCell>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<VisibilityIcon />}
-                        onClick={() => handleViewSchedule(loan)}
-                        disabled={!customerRepayments.some((repayment) => String(repayment.loanId || "") === String(loan.id || ""))}
-                      >
-                        View
-                      </Button>
+              </TableHead>
+              <TableBody>
+                {customerLoans.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} sx={{ textAlign: "center", py: 3, color: "#64748b" }}>
+                      No loans found for this customer.
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                ) : (
+                  customerLoans.map((loan) => (
+                    <TableRow key={loan.id}>
+                      <TableCell>{loan.loanType || "-"}</TableCell>
+                      <TableCell>{formatCurrency(loan.amount)}</TableCell>
+                      <TableCell>{loan.interestRate || "-"}%</TableCell>
+                      <TableCell>{loan.tenor || "-"}</TableCell>
+                      <TableCell>{loan.startDate ? new Date(loan.startDate).toLocaleDateString() : "-"}</TableCell>
+                      <TableCell>{loan.officer || "-"}</TableCell>
+                      <TableCell>{loan.branch || "-"}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<VisibilityIcon />}
+                          onClick={() => handleViewSchedule(loan)}
+                          disabled={!customerRepayments.some((repayment) => String(repayment.loanId || "") === String(loan.id || ""))}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Paper>
 
       <Paper sx={{ p: 2.5, borderRadius: 0.75, border: "1px solid #e2e8f0" }}>
         <Typography variant="h6" sx={{ mb: 1.5, color: "#0f172a" }}>Repayments</Typography>
-        <TableContainer>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Date</TableCell>
-                <TableCell>Amount</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Relationship Manager</TableCell>
-                <TableCell>Branch</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {customerRepayments.length === 0 ? (
+        {isMobile ? (
+          <Box>
+            {customerRepayments.length === 0 ? (
+              <Paper
+                sx={{
+                  p: 3,
+                  textAlign: "center",
+                  borderRadius: 0.75,
+                  border: "1px solid #e2e8f0",
+                  boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+                }}
+              >
+                <Typography sx={{ color: "#64748b" }}>
+                  No repayments found for this customer.
+                </Typography>
+              </Paper>
+            ) : (
+              customerRepayments.map((repayment, idx) => {
+                const linkedLoan = loanById.get(String(repayment.loanId || ""));
+                return (
+                  <RepaymentCard
+                    key={repayment.id || idx}
+                    repayment={repayment}
+                    loan={linkedLoan}
+                    formatCurrency={formatCurrency}
+                    compact={isVerySmallMobile}
+                  />
+                );
+              })
+            )}
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: "center", py: 3, color: "#64748b" }}>
-                    No repayments found for this customer.
-                  </TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Amount</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Relationship Manager</TableCell>
+                  <TableCell>Branch</TableCell>
                 </TableRow>
-              ) : (
-                customerRepayments.map((repayment) => {
-                  const statusInfo = getStatusChip(repayment.status);
-                  return (
-                    <TableRow key={repayment.id}>
-                      <TableCell>{repayment.date ? new Date(repayment.date).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell>{formatCurrency(repayment.amount)}</TableCell>
-                      <TableCell>
-                        <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
-                      </TableCell>
-                      <TableCell>{repayment.officer || "-"}</TableCell>
-                      <TableCell>{repayment.branch || "-"}</TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {customerRepayments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} sx={{ textAlign: "center", py: 3, color: "#64748b" }}>
+                      No repayments found for this customer.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  customerRepayments.map((repayment) => {
+                    const statusInfo = getStatusChip(repayment.status);
+                    return (
+                      <TableRow key={repayment.id}>
+                        <TableCell>{repayment.date ? new Date(repayment.date).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell>{formatCurrency(repayment.amount)}</TableCell>
+                        <TableCell>
+                          <Chip size="small" label={statusInfo.label} color={statusInfo.color} />
+                        </TableCell>
+                        <TableCell>{repayment.officer || "-"}</TableCell>
+                        <TableCell>{repayment.branch || "-"}</TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Paper>
       {/* Repayment Schedule Dialog */}
       {scheduleDialog.open && scheduleDialog.loan && (() => {

@@ -4,7 +4,7 @@ import { Box, Paper, Typography, Chip, ButtonBase, useTheme } from "@mui/materia
 /**
  * Mobile-friendly card component for displaying loan information
  */
-export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStatus, onCustomerClick }) => {
+export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStatus, onCustomerClick, compact = false }) => {
   const theme = useTheme();
   const dark = theme.palette.mode === "dark";
   const lifecycleStatus = getLoanLifecycleStatus(loan);
@@ -25,8 +25,8 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
   return (
     <Paper
       sx={{
-        p: 2,
-        mb: 1.5,
+        p: compact ? 1.5 : 2,
+        mb: compact ? 1 : 1.5,
         borderRadius: 1.5,
         border: dark ? "1px solid rgba(255,255,255,0.12)" : "1px solid #e2e8f0",
         backgroundColor: dark ? "#1a2847" : "#ffffff",
@@ -36,7 +36,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
       }}
     >
       {/* Header: Customer Name and Status */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5, gap: 1 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: compact ? 1 : 1.5, gap: compact ? 0.75 : 1 }}>
         <Box>
           <ButtonBase
             onClick={() => onCustomerClick?.(loan.customerName)}
@@ -50,11 +50,11 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
             }}
           >
             <Typography
-              variant="subtitle2"
+              variant={compact ? "body2" : "subtitle2"}
               sx={{
                 fontWeight: 700,
                 color: dark ? "#f0f9ff" : "#0f172a",
-                mb: 0.25,
+                mb: compact ? 0.1 : 0.25,
               }}
             >
               {loan.customerName}
@@ -76,14 +76,14 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
           sx={{
             ...getStatusColor(lifecycleStatus),
             fontWeight: 600,
-            fontSize: "0.7rem",
-            height: 24,
+            fontSize: compact ? "0.65rem" : "0.7rem",
+            height: compact ? 22 : 24,
           }}
         />
       </Box>
 
       {/* Amount and Interest */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, mb: 1.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 1 : 1.5, mb: compact ? 1 : 1.5 }}>
         <Box>
           <Typography
             variant="caption"
@@ -97,7 +97,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
             Loan Amount
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -119,7 +119,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
             Interest Rate
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -131,7 +131,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
       </Box>
 
       {/* Tenor and Start Date */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, mb: 1.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 1 : 1.5, mb: compact ? 1 : 1.5 }}>
         <Box>
           <Typography
             variant="caption"
@@ -145,7 +145,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
             Tenor (Months)
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -167,7 +167,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
             Start Date
           </Typography>
           <Typography
-            variant="body2"
+            variant={compact ? "caption" : "body2"}
             sx={{
               fontWeight: 700,
               color: dark ? "#f0f9ff" : "#0f172a",
@@ -179,7 +179,7 @@ export const LoanCard = ({ loan, loanCycle, formatCurrency, getLoanLifecycleStat
       </Box>
 
       {/* Officer and Branch */}
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 1 : 1.5 }}>
         <Box>
           <Typography
             variant="caption"
