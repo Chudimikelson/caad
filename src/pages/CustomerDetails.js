@@ -352,13 +352,15 @@ const CustomerDetails = () => {
           </Typography>
         </Box>
 
-        <Button
-          variant="outlined"
-          startIcon={<ArrowBackIcon />}
-          onClick={() => navigate("/loans")}
-        >
-          Back to Loans
-        </Button>
+        {!isMobile && (
+          <Button
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={() => navigate("/loans")}
+          >
+            Back to Loans
+          </Button>
+        )}
       </Box>
 
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
