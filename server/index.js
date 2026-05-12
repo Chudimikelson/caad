@@ -1579,7 +1579,7 @@ const path = require("path");
 app.use(express.static(path.join(__dirname, "../build")));
 
 // Handle SPA routing: redirect all unmatched routes to index.html
-app.get("*", (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, "../build", "index.html"));
 });
 
