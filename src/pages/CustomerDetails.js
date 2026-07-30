@@ -73,6 +73,11 @@ const CustomerDetails = () => {
     [loans, customerName]
   );
 
+  const customerAccountNumber = useMemo(() => {
+    const match = customerLoans.find((loan) => String(loan?.accountNumber || "").trim());
+    return match?.accountNumber || "-";
+  }, [customerLoans]);
+
   const loanIds = useMemo(() => new Set(customerLoans.map((loan) => loan.id)), [customerLoans]);
   const loanById = useMemo(() => {
     const map = new Map();
@@ -347,8 +352,9 @@ const CustomerDetails = () => {
           <Typography variant="h5" fontWeight={700} color="#1e3a8a">
             Customer Details
           </Typography>
-          <Typography variant="body1" sx={{ color: "#475569", mt: 0.4, fontWeight: 600 }}>
-            {customerName || "Unknown Customer"}
+          <Typography variant="body1" sx={{ color: "#475569", mt: 0.4, fontWeight: 600, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+            <span>{customerName || "Unknown Customer"}</span>
+            <span style={{ color: "#64748b", fontWeight: 500 }}>Acct: {customerAccountNumber}</span>
           </Typography>
         </Box>
 

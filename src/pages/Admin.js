@@ -25,7 +25,10 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { fetchAvailableBranches } from "../api";
 import { buildLoanCycleMap, getLoanCycle } from "../utils/loanCycle";
 
@@ -37,7 +40,6 @@ const Admin = () => {
     syncCreateLoan,
     syncCreateRepayment,
     syncUpdateLoan,
-    syncDeleteLoan,
     syncDeleteRepayment,
     syncUpdateRepayment,
     syncReplaceUnpaidRepayments,
@@ -66,6 +68,7 @@ const Admin = () => {
     repaymentStatus: "",
   });
   const [availableBranches, setAvailableBranches] = useState([]);
+  const [copiedLoanId, setCopiedLoanId] = useState(null);
 
   const relationshipManagers = Array.from(
     new Set(
@@ -298,21 +301,16 @@ const Admin = () => {
     }
   };
 
-  /* ---------------- Delete Loan ---------------- */
-  const handleDelete = async (loanId) => {
-    const confirmDelete = window.confirm(
-      "Delete this loan and all its repayments? This action cannot be undone."
-    );
-    if (!confirmDelete) return;
+  const handleCopyAccountNumber = async (loan) => {
+    const accountNumber = String(loan?.accountNumber || "").trim();
+    if (!accountNumber) return;
 
-    setLoading(true);
     try {
-      await syncDeleteLoan(loanId);
+      await navigator.clipboard.writeText(accountNumber);
+      setCopiedLoanId(loan.id);
+      window.setTimeout(() => setCopiedLoanId(null), 1200);
     } catch (err) {
-      console.error("Failed to delete loan:", err);
-      alert("Error deleting loan. See console for details.");
-    } finally {
-      setLoading(false);
+      console.error("Failed to copy account number:", err);
     }
   };
 
@@ -827,25 +825,51 @@ const exportToCSV = () => {
               return (
                 <TableRow key={loan.id}>
                   <TableCell>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                    <Box>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                        <Box
+                          component="sup"
+                          sx={{
+                            fontSize: "0.62rem",
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            bgcolor: "rgba(30,58,138,0.10)",
+                            color: "#1e3a8a",
+                            borderRadius: "999px",
+                            px: 0.6,
+                            py: 0.15,
+                            alignSelf: "flex-start",
+                            transform: "translateY(-0.35em)",
+                          }}
+                        >
+                          {getLoanCycle(loanCycleMap, loan)}
+                        </Box>
+                        <span>{loan.customerName}</span>
+                      </Box>
                       <Box
-                        component="sup"
                         sx={{
-                          fontSize: "0.62rem",
-                          fontWeight: 700,
-                          lineHeight: 1,
-                          bgcolor: "rgba(30,58,138,0.10)",
-                          color: "#1e3a8a",
-                          borderRadius: "999px",
-                          px: 0.6,
-                          py: 0.15,
-                          alignSelf: "flex-start",
-                          transform: "translateY(-0.35em)",
+                          mt: 0.4,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          color: "#64748b",
+                          fontSize: "0.8rem",
                         }}
                       >
-                        {getLoanCycle(loanCycleMap, loan)}
+                        <span>Acct: {loan.accountNumber || "-"}</span>
+                        {loan.accountNumber ? (
+                          <Tooltip title={copiedLoanId === loan.id ? "Copied" : "Copy"}>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleCopyAccountNumber(loan)}
+                              aria-label={`Copy account number for ${loan.customerName || "customer"}`}
+                              sx={{ p: 0.35 }}
+                            >
+                              <ContentCopyIcon sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Tooltip>
+                        ) : null}
                       </Box>
-                      <span>{loan.customerName}</span>
                     </Box>
                   </TableCell>
                   <TableCell>₦{monthlyInstallment?.toLocaleString() || "0"}</TableCell>
@@ -937,14 +961,6 @@ const exportToCSV = () => {
                       sx={{ mr: 1 }}
                     >
                       Manage
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      size="small"
-                      onClick={() => handleDelete(loan.id)}
-                    >
-                      Delete
                     </Button>
                   </TableCell>
                 </TableRow>
