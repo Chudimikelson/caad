@@ -132,6 +132,10 @@ const loanSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  accountNumber: {
+    type: String,
+    trim: true,
+  },
   loanType: {
     type: String,
   },
@@ -214,6 +218,10 @@ const repaymentSchema = new mongoose.Schema({
     required: true,
   },
   customerName: String,
+  accountNumber: {
+    type: String,
+    trim: true,
+  },
   loanAmount: Number,
   date: String,
   amount: {
@@ -264,6 +272,14 @@ const superAdminOnly = (req, res, next) => {
 const normalizeManagerName = (value) => {
   if (typeof value !== "string") return "";
   return value.trim().replace(/\s*\(Officer\)$/i, "").trim();
+};
+
+const normalizeCustomerNameKey = (value) => {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+};
+
+const escapeRegex = (value) => {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 };
 
 const resolveRelationshipManagerNames = async (userId) => {
@@ -960,6 +976,124 @@ app.put("/super-admin/customers/reassign-manager", authRequired, superAdminOnly,
   }
 });
 
+// PUT /super-admin/customers/bulk-account-numbers
+app.put("/super-admin/customers/bulk-account-numbers", authRequired, superAdminOnly, async (req, res) => {
+  try {
+    const { rows } = req.body;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "rows must be a non-empty array" });
+    }
+
+    const byCustomer = new Map();
+    const conflictingCustomers = new Set();
+    let invalidRows = 0;
+
+    rows.forEach((row) => {
+      const customerName = String(row?.customerName || "").trim().replace(/\s+/g, " ");
+      const accountNumber = String(row?.accountNumber || "").trim();
+
+      if (!customerName || !accountNumber) {
+        invalidRows += 1;
+        return;
+      }
+
+      const key = normalizeCustomerNameKey(customerName);
+      const existing = byCustomer.get(key);
+
+      if (existing && existing.accountNumber !== accountNumber) {
+        conflictingCustomers.add(existing.customerName);
+        conflictingCustomers.add(customerName);
+        return;
+      }
+
+      if (!existing) {
+        byCustomer.set(key, { customerName, accountNumber });
+      }
+    });
+
+    const updates = Array.from(byCustomer.values());
+    const [loanCustomers, repaymentCustomers] = await Promise.all([
+      Loan.distinct("customerName", { customerName: { $exists: true, $nin: [null, ""] } }),
+      Repayment.distinct("customerName", { customerName: { $exists: true, $nin: [null, ""] } }),
+    ]);
+
+    const existingCustomerMap = new Map();
+    [...loanCustomers, ...repaymentCustomers].forEach((name) => {
+      const raw = String(name || "").trim().replace(/\s+/g, " ");
+      const key = normalizeCustomerNameKey(raw);
+      if (raw && key && !existingCustomerMap.has(key)) {
+        existingCustomerMap.set(key, raw);
+      }
+    });
+
+    const rowsToUpdate = [];
+    const unmatchedCustomerNames = [];
+
+    updates.forEach((entry) => {
+      const key = normalizeCustomerNameKey(entry.customerName);
+      if (!existingCustomerMap.has(key)) {
+        unmatchedCustomerNames.push(entry.customerName);
+        return;
+      }
+
+      rowsToUpdate.push({
+        customerName: existingCustomerMap.get(key),
+        accountNumber: entry.accountNumber,
+      });
+    });
+
+    let updatedCustomers = 0;
+    let unchangedCustomers = 0;
+    let loansMatched = 0;
+    let repaymentsMatched = 0;
+    let loansUpdated = 0;
+    let repaymentsUpdated = 0;
+
+    for (const entry of rowsToUpdate) {
+      const namePattern = new RegExp(`^${escapeRegex(entry.customerName)}$`, "i");
+
+      const [loanResult, repaymentResult] = await Promise.all([
+        Loan.updateMany({ customerName: namePattern }, { $set: { accountNumber: entry.accountNumber } }),
+        Repayment.updateMany({ customerName: namePattern }, { $set: { accountNumber: entry.accountNumber } }),
+      ]);
+
+      const matchedInAny = (loanResult.matchedCount || 0) + (repaymentResult.matchedCount || 0);
+      const modifiedInAny = (loanResult.modifiedCount || 0) + (repaymentResult.modifiedCount || 0);
+
+      loansMatched += loanResult.matchedCount || 0;
+      repaymentsMatched += repaymentResult.matchedCount || 0;
+      loansUpdated += loanResult.modifiedCount || 0;
+      repaymentsUpdated += repaymentResult.modifiedCount || 0;
+
+      if (modifiedInAny > 0) {
+        updatedCustomers += 1;
+      } else if (matchedInAny > 0) {
+        unchangedCustomers += 1;
+      }
+    }
+
+    res.json({
+      message: "Customer account number update completed",
+      totalRows: rows.length,
+      validRows: updates.length,
+      matchedRows: rowsToUpdate.length,
+      invalidRows,
+      conflictingCustomers: Array.from(conflictingCustomers).sort((a, b) => a.localeCompare(b)),
+      updatedCustomers,
+      unchangedCustomers,
+      unmatchedCustomers: unmatchedCustomerNames.length,
+      unmatchedCustomerNames,
+      loansMatched,
+      repaymentsMatched,
+      loansUpdated,
+      repaymentsUpdated,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ==================== Branch Management Routes ==================== */
 
 // GET /branches - active branch catalog for all authenticated users
@@ -1245,7 +1379,7 @@ app.get("/loans", authRequired, async (req, res) => {
 // POST /loans (admin only)
 app.post("/loans", authRequired, adminOnly, async (req, res) => {
   try {
-    const { customerName, amount, interestRate, loanType, tenor, startDate, officer, branch } = req.body;
+    const { customerName, accountNumber, amount, interestRate, loanType, tenor, startDate, officer, branch } = req.body;
 
     let resolvedInterestRate = interestRate;
     if (loanType) {
@@ -1262,6 +1396,7 @@ app.post("/loans", authRequired, adminOnly, async (req, res) => {
 
     const loan = new Loan({
       customerName,
+      accountNumber: accountNumber || undefined,
       loanType: loanType || undefined,
       amount,
       interestRate: Number(resolvedInterestRate),
@@ -1286,7 +1421,7 @@ app.post("/loans", authRequired, adminOnly, async (req, res) => {
 app.put("/loans/:id", authRequired, adminOnly, async (req, res) => {
   try {
     const { id } = req.params;
-    const { customerName, amount, interestRate, loanType, tenor, startDate, officer, branch } = req.body;
+    const { customerName, accountNumber, amount, interestRate, loanType, tenor, startDate, officer, branch } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid loan ID" });
@@ -1305,6 +1440,7 @@ app.put("/loans/:id", authRequired, adminOnly, async (req, res) => {
       id,
       {
         customerName,
+        accountNumber: accountNumber || undefined,
         loanType: loanType || undefined,
         amount,
         interestRate: Number(resolvedInterestRate),
@@ -1395,7 +1531,7 @@ app.get("/repayments", authRequired, async (req, res) => {
 // POST /repayments (admin only)
 app.post("/repayments", authRequired, adminOnly, async (req, res) => {
   try {
-    const { loanId, customerName, loanAmount, date, amount, officer, branch, status } = req.body;
+    const { loanId, customerName, accountNumber, loanAmount, date, amount, officer, branch, status } = req.body;
     if (!loanId || !date || amount == null) {
       return res.status(400).json({ error: "Missing required repayment fields" });
     }
@@ -1413,6 +1549,7 @@ app.post("/repayments", authRequired, adminOnly, async (req, res) => {
     const repayment = new Repayment({
       loanId,
       customerName: customerName || undefined,
+      accountNumber: accountNumber || undefined,
       loanAmount: loanAmount || undefined,
       date,
       amount,
@@ -1437,7 +1574,7 @@ app.post("/repayments", authRequired, adminOnly, async (req, res) => {
 app.put("/repayments/:id", authRequired, adminOnly, async (req, res) => {
   try {
     const { id } = req.params;
-    const { loanId, customerName, loanAmount, date, amount, officer, branch, status } = req.body;
+    const { loanId, customerName, accountNumber, loanAmount, date, amount, officer, branch, status } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "Invalid repayment ID" });
@@ -1448,6 +1585,7 @@ app.put("/repayments/:id", authRequired, adminOnly, async (req, res) => {
       {
         loanId,
         customerName: customerName || undefined,
+        accountNumber: accountNumber || undefined,
         loanAmount: loanAmount || undefined,
         date,
         amount,
@@ -1536,10 +1674,11 @@ app.put("/loans/:id/replace-unpaid-repayments", authRequired, async (req, res) =
     // Insert new repayments
     const createdRepayments = [];
     for (const r of newReps) {
-      const { date, amount, customerName, loanAmount, officer, branch, status } = r;
+      const { date, amount, customerName, accountNumber, loanAmount, officer, branch, status } = r;
       const newRep = new Repayment({
         loanId: id,
         customerName: customerName || undefined,
+        accountNumber: accountNumber || undefined,
         loanAmount: loanAmount || undefined,
         date,
         amount,

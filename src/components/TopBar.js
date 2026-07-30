@@ -93,23 +93,7 @@ const TopBar = ({ isMobile = false, sidebarOpen = false, onSidebarToggle = () =>
           >
             {today}
           </Typography>
-          <Typography
-            variant="h6"
-            sx={{
-              color: dark ? "#f8fbff" : "#1b254b",
-              fontFamily: "'Poppins', 'Manrope', 'Nunito Sans', sans-serif",
-              fontSize: { xs: "1rem", sm: "1.25rem", md: "1.875rem" },
-              fontWeight: 700,
-              lineHeight: 1,
-              letterSpacing: "-0.01em",
-              textTransform: "capitalize",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            Loan Management
-          </Typography>
+  
         </Box>
 
         {/* Right section with controls */}

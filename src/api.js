@@ -21,11 +21,27 @@ async function request(path, options = {}) {
     ...options,
     headers,
   });
+  const contentType = res.headers.get("content-type") || "";
+  const isJson = contentType.toLowerCase().includes("application/json");
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+    const errorBody = isJson ? await res.json().catch(() => null) : await res.text();
+    const message =
+      (errorBody && typeof errorBody === "object" && errorBody.error) ||
+      (typeof errorBody === "string" && errorBody.trim()) ||
+      `Request failed with status ${res.status}`;
+    throw new Error(`API error ${res.status}: ${message}`);
   }
+
   if (res.status === 204) return null;
+
+  if (!isJson) {
+    const bodyPreview = (await res.text()).slice(0, 120).trim();
+    throw new Error(
+      `Expected JSON response from API but received non-JSON content. Check REACT_APP_API_URL and backend route. Response starts with: ${bodyPreview}`
+    );
+  }
+
   return res.json();
 }
 
@@ -116,6 +132,11 @@ export const reassignCustomerManager = (payload) =>
   request("/super-admin/customers/reassign-manager", {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+export const bulkUpdateCustomerAccountNumbers = (rows) =>
+  request("/super-admin/customers/bulk-account-numbers", {
+    method: "PUT",
+    body: JSON.stringify({ rows }),
   });
 
 // Branches

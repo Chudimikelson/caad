@@ -40,6 +40,7 @@ const Sidebar = ({ isMobile = false, open = false, onClose = () => {} }) => {
       { text: "Relationship Manager Management", icon: <PersonIcon />, path: "/relationship-managers" },
       { text: "Loan Settings", icon: <AccountBalanceIcon />, path: "/loan-settings" },
       { text: "Branch Management", icon: <BarChartIcon />, path: "/branch-management" },
+      { text: "Customer Management", icon: <PersonIcon />, path: "/customer-management" },
     ];
   } else if (user?.role === "Credit Admin") {
     menuItems = [
