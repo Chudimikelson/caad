@@ -25,6 +25,8 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  Checkbox,
+  ListItemText,
   IconButton,
   Tooltip,
 } from "@mui/material";
@@ -40,7 +42,6 @@ const Admin = () => {
     syncCreateLoan,
     syncCreateRepayment,
     syncUpdateLoan,
-    syncDeleteRepayment,
     syncUpdateRepayment,
     syncReplaceUnpaidRepayments,
   } = useContext(DataContext);
@@ -64,7 +65,7 @@ const Admin = () => {
     relationshipManager: "",
     branch: "",
     customerSearch: "",
-    loanStatus: "",
+    loanStatus: [],
     repaymentStatus: "",
   });
   const [availableBranches, setAvailableBranches] = useState([]);
@@ -188,8 +189,8 @@ const Admin = () => {
         }
       }
 
-      if (filters.loanStatus) {
-        if (getLoanLifecycleStatus(loan).toLowerCase() !== filters.loanStatus) {
+      if (Array.isArray(filters.loanStatus) && filters.loanStatus.length > 0) {
+        if (!filters.loanStatus.includes(getLoanLifecycleStatus(loan))) {
           return false;
         }
       }
@@ -406,23 +407,6 @@ const toggleStatus = async (rep) => {
   }
 };
 
-const handleDeleteRepayment = async (repaymentId) => {
-  const confirmDelete = window.confirm(
-    "Delete this repayment record? This action cannot be undone."
-  );
-  if (!confirmDelete) return;
-
-  setLoading(true);
-  try {
-    await syncDeleteRepayment(repaymentId);
-  } catch (err) {
-    console.error("Failed to delete repayment:", err);
-    alert("Error deleting repayment. See console for details.");
-  } finally {
-    setLoading(false);
-  }
-};
-
 const getOrdinalDay = (date) => {
   if (!date) return "-";
   const day = new Date(date).getDate();
@@ -459,7 +443,7 @@ const resetFilters = () => {
     relationshipManager: "",
     branch: "",
     customerSearch: "",
-    loanStatus: "",
+    loanStatus: [],
     repaymentStatus: "",
   });
 };
@@ -745,18 +729,34 @@ const exportToCSV = () => {
           </Grid>
 
           <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-            <TextField
-              select
-              label="Loan Status"
-              fullWidth
-              value={filters.loanStatus}
-              onChange={handleFilterChange("loanStatus")}
-            >
-              <MenuItem value="">All Loan Statuses</MenuItem>
-              <MenuItem value="active">Active</MenuItem>
-              <MenuItem value="overdue">Overdue</MenuItem>
-              <MenuItem value="closed">Closed</MenuItem>
-            </TextField>
+            <FormControl fullWidth>
+              <InputLabel id="loan-status-filter-label">Loan Status</InputLabel>
+              <Select
+                labelId="loan-status-filter-label"
+                label="Loan Status"
+                multiple
+                value={filters.loanStatus}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    loanStatus:
+                      typeof event.target.value === "string"
+                        ? event.target.value.split(",")
+                        : event.target.value,
+                  }))
+                }
+                renderValue={(selected) =>
+                  Array.isArray(selected) && selected.length > 0 ? selected.join(", ") : "All Loan Statuses"
+                }
+              >
+                {['Active', 'Overdue', 'Closed'].map((status) => (
+                  <MenuItem key={status} value={status}>
+                    <Checkbox checked={filters.loanStatus.indexOf(status) > -1} />
+                    <ListItemText primary={status} />
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
 
           <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
@@ -1114,7 +1114,6 @@ const exportToCSV = () => {
                   <TableCell>Repayment Date</TableCell>
                   <TableCell>Amount</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1147,19 +1146,10 @@ const exportToCSV = () => {
                                 : r.status === "❌"
                                 ? "red"
                                 : "gray",
+                            minWidth: 110,
                           }}
                         >
                           {r.status || "⚪"}
-                        </Button>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Button
-                          variant="text"
-                          color="error"
-                          size="small"
-                          onClick={() => handleDeleteRepayment(r.id)}
-                        >
-                          Delete
                         </Button>
                       </TableCell>
                     </TableRow>

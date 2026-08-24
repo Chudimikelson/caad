@@ -16,6 +16,7 @@ import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 import PersonIcon from "@mui/icons-material/Person";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import BarChartIcon from "@mui/icons-material/BarChart";
+import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import { useContext } from "react";
 import { DataContext } from "../DataContext";
 
@@ -29,6 +30,7 @@ const Sidebar = ({ isMobile = false, open = false, onClose = () => {} }) => {
 
   if (user?.role === "Supervisor") {
     menuItems = [
+      { text: "CBA", icon: <AccountBalanceWalletIcon />, path: "/cba" },
       { text: "Global Reports", icon: <BarChartIcon />, path: "/global-reports" },
       { text: "Loans", icon: <AccountBalanceIcon />, path: "/loans" },
       { text: "Repayments", icon: <ShoppingCartIcon />, path: "/repayments" },
@@ -36,6 +38,7 @@ const Sidebar = ({ isMobile = false, open = false, onClose = () => {} }) => {
     ];
   } else if (user?.role === "Super Admin") {
     menuItems = [
+      { text: "CBA", icon: <AccountBalanceWalletIcon />, path: "/cba" },
       { text: "User Management", icon: <PersonIcon />, path: "/user-management" },
       { text: "Relationship Manager Management", icon: <PersonIcon />, path: "/relationship-managers" },
       { text: "Loan Settings", icon: <AccountBalanceIcon />, path: "/loan-settings" },
@@ -44,6 +47,7 @@ const Sidebar = ({ isMobile = false, open = false, onClose = () => {} }) => {
     ];
   } else if (user?.role === "Credit Admin") {
     menuItems = [
+      { text: "CBA", icon: <AccountBalanceWalletIcon />, path: "/cba" },
       { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
       { text: "Loans", icon: <AccountBalanceIcon />, path: "/loans" },
       { text: "Repayments", icon: <ShoppingCartIcon />, path: "/repayments" },
@@ -51,13 +55,17 @@ const Sidebar = ({ isMobile = false, open = false, onClose = () => {} }) => {
     ];
   } else if (user?.role === "Relationship Manager") {
     menuItems = [
+      { text: "CBA", icon: <AccountBalanceWalletIcon />, path: "/cba" },
       { text: "Dashboard", icon: <DashboardIcon />, path: "/my-reports" },
       { text: "Loans", icon: <AccountBalanceIcon />, path: "/loans" },
       { text: "Repayments", icon: <ShoppingCartIcon />, path: "/repayments" },
       { text: "My Profile", icon: <PersonIcon />, path: "/staff-profile" },
     ];
   } else {
-    menuItems = [{ text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" }];
+    menuItems = [
+      { text: "CBA", icon: <AccountBalanceWalletIcon />, path: "/cba" },
+      { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
+    ];
   }
 
   const SidebarContent = (

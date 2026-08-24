@@ -19,6 +19,7 @@ import BranchManagement from "./pages/BranchManagement";
 import StaffProfile from "./pages/StaffProfile";
 import CustomerDetails from "./pages/CustomerDetails";
 import CustomerManagement from "./pages/CustomerManagement";
+import CBA from "./pages/CBA";
 import { Box, CircularProgress } from "@mui/material";
 
 // ProtectedRoute component that checks authentication
@@ -115,6 +116,16 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Dashboard />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/cba"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <CBA />
               </Layout>
             </ProtectedRoute>
           }
